@@ -1,0 +1,142 @@
+# One image, one container, one DDS domain: Ubuntu 22.04, ROS 2 Humble and
+# Isaac Sim 6.1 at /isaac-sim. RViz, Nav2, the TurtleBot3 packages, this package
+# and the simulator all in one place -- because Kit and ROS 2 have to share a
+# machine anyway, and splitting them over DDS buys nothing here.
+#
+#   ./docker/x11-auth.sh                          # once per X session
+#   scripts/build_images.sh                       # base image, then this one
+#   docker compose up -d                          # start it; caches stay warm
+#   docker compose exec turtlebot3_isaacsim bash  # a terminal; repeat for more
+#
+# `exec` does NOT run /entrypoint.sh -- only `run` does -- and Ubuntu's stock
+# root .bashrc returns early for non-interactive shells, so
+# `exec ... bash -c 'ros2 ...'` finds no ros2 on PATH and fails quietly.
+# Anything scripted goes through the entrypoint explicitly:
+#
+#   docker compose exec turtlebot3_isaacsim /entrypoint.sh bash -c 'ros2 topic list'
+#
+# Inside, `isaacsim` starts the GUI and `isaacsim-python <script>` runs a
+# standalone app. Both go through ros-isolate, the ONLY correct way to start Kit
+# from a shell that has sourced ROS 2 -- see docker/isaacsim-ros2/ros-isolate.
+
+services:
+
+  turtlebot3_isaacsim:
+    build:
+      context: ./docker/ros
+      dockerfile: Dockerfile
+      args:
+        # Built by scripts/build_images.sh from docker/isaacsim-ros2/Dockerfile.humble.
+        BASE_IMAGE: ${TB3_BASE_IMAGE:-isaacsim61-humble:ngc}
+    image: turtlebot3_isaacsim:humble
+    container_name: turtlebot3_isaacsim
+    network_mode: host
+    privileged: true                      # /dev/ttyACM0 + lidar USB for the real robot
+
+    # No `ipc: host`, but do NOT read that as "private /dev/shm": `- /dev:/dev`
+    # below recursively bind-mounts the host's /dev over the one Docker sets up,
+    # so /dev/shm inside IS the host's (measured 2026-09-13). It stays harmless
+    # only because this container is root: carb names a segment after its own
+    # deterministic PID (/dev/shm/carb-RStringInternals-<pid>) and creates it
+    # 0666, so an earlier root run's leftover is reusable rather than fatal. A
+    # leftover owned by anyone else aborts Kit before it starts, with
+    # `Failed to create shared memory named carb-RStringInternals-62`.
+
+    environment:
+      - ACCEPT_EULA=Y
+      - PRIVACY_CONSENT=Y
+      - PRIVACY_USERID=${PRIVACY_EMAIL:-user@example.com}
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-30}
+      - TURTLEBOT3_MODEL=${TURTLEBOT3_MODEL:-burger}
+      - LDS_MODEL=${LDS_MODEL:-LDS-02}
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+
+      # Deliberately no ROS_DISTRO or bundled-library path here: ros-isolate
+      # derives both from ISAACSIM_ROS_DISTRO=humble (baked into the base image)
+      # for the Kit process only, so the shell keeps the system Humble and Kit
+      # gets its own. Setting ROS_DISTRO here would break the shell's ROS 2.
+
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      # Host X access control is per-UID (`SI:localuser:<you>`), so the socket
+      # mount alone is not enough. docker/x11-auth.sh generates a cookie on the
+      # host and re-keys it under a wildcard family; run it before `up`.
+      - XAUTHORITY=/root/.Xauthority
+
+      # Fast-DDS runs on its default transports, shared memory included. It was
+      # pinned to UDP while the simulator and ROS 2 lived in two containers
+      # under different uids; one container as root does not need that.
+
+    volumes:
+      - /dev:/dev
+      - /run/udev:/run/udev
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ${TB3_XAUTH:-/tmp/turtlebot3_isaacsim.docker.xauth}:/root/.Xauthority:ro
+
+      # This package, edited on the host and colcon-built inside.
+      - .:/ws/src/turtlebot3_isaacsim
+
+      # isaacsim_bringup is a hard dependency of the launch chain -- every
+      # launch file here ends up including its run_isaacsim.launch.py -- and it
+      # ships ONLY as source, in NVIDIA's IsaacSim-ros_workspaces. It is not an
+      # apt package, it is not under /opt/ros, and it is not inside the Isaac
+      # Sim install tree (all three checked, 6.1.0). So it has to sit in the
+      # workspace and be built like any other package:
+      #
+      #   cp -r /path/to/IsaacSim-ros_workspaces/humble_ws/src/isaacsim_bringup \
+      #         ~/turtlebot3_ws/src/
+      #
+      # Long syntax with create_host_path off on purpose: a plain bind mount of
+      # a path that does not exist makes Docker create an empty root-owned
+      # directory, and the failure then surfaces much later as "package
+      # 'isaacsim_bringup' not found" with an empty directory nobody can delete.
+      # This way `up` refuses to start and says which path is missing.
+      - type: bind
+        source: ../isaacsim_bringup
+        target: /ws/src/isaacsim_bringup
+        bind:
+          create_host_path: false
+
+      # --- Kit caches ---------------------------------------------------------
+      # /scan appears 164-168 s after launch cold and 14 s warm; that 12x is the
+      # whole argument for this block. The paths were measured by diffing the
+      # filesystem across a cold run rather than copied from NVIDIA's compose
+      # file, which mounts four $HOME-relative paths -- right for an image whose
+      # user's home IS /isaac-sim, wrong here where HOME=/root. The big one
+      # (493 MB of shader cache) is not $HOME-relative at all. The ~46 MB of
+      # .pyc Kit scatters through /isaac-sim is deliberately not persisted:
+      # regenerating it is seconds, covering it would mean mounting the whole
+      # 25 GB install tree.
+      - isaac_kit_cache:/isaac-sim/kit/cache
+      - isaac_compute_cache:/root/.nv/ComputeCache
+      - isaac_optix_cache:/var/tmp
+      # Kit's own logs, for the same reason ros_logs exists: the failures here
+      # are the silent kind you can only diagnose afterwards.
+      - isaac_kit_logs:/isaac-sim/kit/logs
+
+      # A named volume rather than a bind mount, deliberately: this container is
+      # root, so a bind mount would leave a root:root directory in the repo that
+      # you cannot delete without sudo.
+      #   docker compose exec turtlebot3_isaacsim ls /root/.ros/log
+      #   docker volume rm turtlebot3_isaacsim_ros_logs
+      - ros_logs:/root/.ros
+
+    working_dir: /ws
+    command: sleep infinity      # `up -d` keeps it alive; attach with `exec`
+    # `sleep infinity` as PID 1 reaps nothing, and a killed Kit leaves a trail
+    # of `python3 <defunct>`. init: true puts docker-init in front.
+    init: true
+    stdin_open: true
+    tty: true
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+
+volumes:
+  ros_logs:
+  isaac_kit_cache:
+  isaac_compute_cache:
+  isaac_optix_cache:
+  isaac_kit_logs:
