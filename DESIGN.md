@@ -3,6 +3,10 @@
 Why this package looks the way it does, written against `turtlebot3_gazebo`
 because that is the package it has to be interchangeable with.
 
+For the upstream side of the same questions — what the Isaac Sim docs
+actually prescribe, and which of our choices diverge — see
+[UPSTREAM.md](UPSTREAM.md).
+
 - [The three layers](#the-three-layers)
 - [What maps onto what](#what-maps-onto-what)
 - [Two launch files that do not exist](#two-launch-files-that-do-not-exist)
@@ -198,10 +202,18 @@ extrapolation errors even when the geometry is perfect.
 | noise σ | 0.01 m | `rangeAccuracyM` |
 | elevation | horizontal | `elevationDeg: [0.0]` |
 
-It is found by appending `models/lidar_configs/` to
-`app.sensors.nv.lidar.profileBaseFolder`, a settings list the renderer walks to
-resolve a profile by name. That is what lets the package ship its own sensor
-model rather than borrow a vendor one.
+It is applied by authoring it onto the `OmniLidar` prim attribute by
+attribute, which is what lets the package ship its own sensor model rather than
+borrow a vendor one. Isaac Sim 6.0 left no way to hand the renderer a profile by
+name: `Lidar.create(config=)` resolves against `SUPPORTED_LIDAR_CONFIGS`, a
+registry of stock USD assets under the Nucleus assets root, and rejects anything
+else — `app.sensors.nv.lidar.profileBaseFolder` no longer reaches the Python
+API. `profile_attributes()` does the translation, and the tables above it hold
+the handful of names the schema spells differently (`reportRateBaseHz` is
+`patternFiringRateHz`, `wavelengthNm` is `waveLengthNm`) and the one field,
+`avgPowerW`, the 6.0 schema dropped. An attribute the prim does not have is a
+warning inside `Lidar.create`, so the prim is checked against the profile
+afterwards rather than trusted.
 
 **Why not Isaac Sim's stock `Example_Rotary_2D`.** It is a 200 m survey lidar,
 and its single emitter sits at `elevationDeg: [-2.0]` — it scans the floor. On a
@@ -213,6 +225,13 @@ workaround. The scan pattern baked into that config still assumes its own 30 Hz
 / 32000 Hz; the plugin then warns `Multi-tick is enabled but motion BVH is not
 active` and `/scan` publishes in bursts rather than steadily. Authoring a
 self-consistent profile is the fix.
+
+**`/scan` is silent in an empty world.** The writer publishes a scan only when
+the sweep returned something, and a horizontal lidar over a bare ground plane
+returns nothing at all: the topic is advertised and no message ever arrives. It
+reads exactly like a broken sensor and is not one -- `empty_world.launch.py` has
+nothing within the 3.5 m range for a ray to hit. Anything with a wall in it,
+`turtlebot3_world.launch.py` included, publishes at the profile's 5 Hz.
 
 The `RtxLidarROS2PublishLaserScan` writer is used rather than a point cloud on
 purpose: a point cloud would force a `pointcloud_to_laserscan` node into every
@@ -282,10 +301,25 @@ output directory is cleared first.
 
 ## worlds/
 
-Environments, the counterpart of `turtlebot3_gazebo/worlds/*.world`. Generated,
-gitignored, and **none ship yet** — `turtlebot3_world.launch.py` will fail with
-a message naming the missing file until one is built. `empty_world.launch.py`
+Environments, the counterpart of `turtlebot3_gazebo/worlds/*.world`. Generated
+and gitignored, so a fresh clone has none and `turtlebot3_world.launch.py` fails
+with a message naming the missing file until one is built. `empty_world.launch.py`
 needs none.
+
+A world does not have to be a file here. `scripts/assets.py` resolves three
+spellings of `--world`, and the simulator and the map builder share it so the
+map is always cut from the same scene that gets simulated:
+
+| spelling | resolved by |
+|---|---|
+| `/ws/.../turtlebot3_world.usd` | the filesystem, via `asset_layer()` |
+| `/Isaac/Environments/...` | `get_assets_root_path()` — fetched and cached |
+| `https://.../warehouse.usd` | taken as given |
+
+The middle one is what `warehouse.launch.py` uses, and it is the documented way
+to reach the stock environments: NVIDIA ships no `turtlebot3_world`, and there
+is no SDF importer, so a Gazebo world has to be generated while a stock Isaac
+Sim environment only has to be named. See UPSTREAM.md, "Asset root resolution".
 
 A world here is a *pure environment*, because the simulator composes the scene
 the way `gzserver` composes a `.world` with a spawned model:
@@ -305,12 +339,93 @@ referencing the same meshes at the same poses. Keeping the meshes identical
 between the two backends is what makes a Gazebo run and an Isaac Sim run
 comparable at all; a separately modelled world quietly destroys that.
 
+## maps/
+
+Nav2 needs a map, and `turtlebot3_navigation2` ships exactly one — for
+`turtlebot3_world`. Every other world needs its own, so `scripts/build_map.py`
+builds one with Isaac Sim's occupancy map generator (`isaacsim.asset.gen.omap`,
+the Python side of Tools > Robotics > Occupancy Map). That is the documented
+substitute for a hand-drawn map; UPSTREAM.md, "Worlds".
+
+It ray-casts **collision** geometry, not what the renderer draws, so it maps
+what a lidar could hit. Two consequences worth knowing:
+
+- The extension is not in the base experience. It has to be
+  `enable_extension`'d before its Python module exists, exactly like the ROS 2
+  bridge, or the import fails with `ModuleNotFoundError`.
+- PhysX only knows the stage after it has been stepped. Without one
+  `update_simulation()` first, every cell comes back unknown — which reads like
+  a bad `--bounds` rather than an empty collision scene.
+
+The slice is a band, not a plane: `--z-min`/`--z-max` default to 0.10–0.25 m so
+that both scanner heights fall inside it (burger 0.182, waffle 0.122). A band
+wider than the beam records obstacles the beam can miss, which is visible in a
+warehouse of open racks — the map shows a rack 2.5 m away and the scan passes
+between its uprights. Narrow the band onto one scanner to close that gap.
+
+### The occupancy map is flipped
+
+**Open bug, do not trust `maps/warehouse.*`.** Observed 2026-09-13: the robot
+spawns beside the racks in the stage, but in RViz it localises against the
+mirror image of the hall — the props do not line up with the map. Nav2 still
+plans and drives, because the warehouse is nearly symmetric, which is precisely
+what makes this worth writing down: a mirrored map does not look broken.
+
+There are two candidates and they are independent:
+
+1. **The map is mirrored.** `write_map()` assumes the generator's buffer runs
+   `+x` along a row and `+y` up a column, and reverses the rows so the first
+   `.pgm` row is maximum y. NVIDIA's own `compute_coordinates()` in
+   `isaacsim/asset/gen/omap/utils/utils.py` implies a *different* convention:
+   it puts the image's top-left at `(max_x, min_y)` and its top-right at
+   `(min_x, min_y)`, so across a row **x decreases**, and down a column **y
+   increases**. That is the world rotated, not the layout assumed here. The
+   bounds used so far are square (±30 m), so a transpose cannot be caught by
+   comparing dimensions.
+2. **The scan is mirrored.** `rotationDirection: CW` in the lidar profile was
+   carried over from the stock profile and has never been checked against
+   REP-103 ordering — it is already the first entry under "Unverified" below.
+   A mirrored `LaserScan` would misalign against a perfectly good map.
+
+To tell them apart, test each without the other:
+
+- *Map alone, no ROS.* `generator.get_occupied_positions()` returns occupied
+  cells as world coordinates. Compare that set against the world coordinates
+  derived from the written `.pgm` by the pixel→world arithmetic in `write_map()`
+  and `build_map.py`'s yaml `origin`. If they disagree, it is (1), and the fix
+  is the row/column mapping.
+- *Scan alone, no map.* Put the robot at a known pose beside an asymmetric
+  feature and check the bearing of the returns against the stage geometry: a
+  wall on the robot's left must appear at positive bearing. If it appears at
+  negative, it is (2), and the fix is in `attach_lidar()`.
+
+Also note, for whoever picks this up: `generate_image()` in that same NVIDIA
+file tests the buffer for `1.0`/`0.0` while `update_settings()` is documented as
+taking the occupied/free/unknown values to write (this package passes 4/5/6, and
+4/5/6 is what comes back). Do not assume the two agree.
+
 ## Status
 
-Not yet run against a GPU.
+Run against a GPU on 2026-09-13, on Isaac Sim 6.1.0 (`isaacsim61-humble:ngc`),
+with the results below. The claims under "Carried over" and "Unverified" that
+this did not touch are left as they were.
 
-**Verified:** the package builds under `colcon` and installs every directory
-where it should; the launch files load through the full include chain with
+**Verified live on 6.1.0:** all four existing launch files plus
+`warehouse.launch.py`; `/clock`, `/odom`, `/tf` and `/joint_states` at ~45-50 Hz;
+`/scan` at the profile's 5 Hz with real returns once something is in range;
+`/cmd_vel` driving the robot; `odom -> base_footprint` resolving; and
+`turtlebot3_navigation2` bringing up AMCL and Nav2 against a generated map,
+reaching a goal 6 m away with zero recoveries. The `.pgm` that run used is
+mirrored — see above — so the *navigation stack* is verified working and the
+*map* is not.
+
+**Also measured:** an empty world publishes no `/scan` at all, and neither does
+the middle of the warehouse floor: the burger's 3.5 m lidar reaches nothing
+there, so AMCL stops updating and Nav2 aborts the goal. Both are the sensor
+behaving correctly, not a fault. Spawn and navigate near structure.
+
+**Verified statically, before any of the above:** the package builds under
+`colcon` and installs every directory where it should; the launch files load through the full include chain with
 `isaacsim_bringup` present; `isaacsim.launch.py` assembles the expected
 `standalone:=` string in both the empty-world and turtlebot3_world cases, with
 `exclude_install_path` correctly derived from `$COLCON_PREFIX_PATH`; and the
