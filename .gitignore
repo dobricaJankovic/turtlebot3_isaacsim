@@ -1,0 +1,6 @@
+# Generated assets: built from turtlebot3_description by scripts/build_models.sh
+models/turtlebot3_burger/
+models/turtlebot3_waffle/
+models/turtlebot3_waffle_pi/
+worlds/*.usd
+worlds/*.usda
