@@ -86,6 +86,21 @@ def launch_setup(context):
             ),
             launch_arguments={
                 'standalone': ' '.join(standalone),
+                # An IncludeLaunchDescription inherits the surrounding
+                # configurations, so every name run_isaacsim.launch.py declares
+                # is one we can collide with. isaac_install_path and
+                # isaac_version are renamed for that reason; headless is not so
+                # lucky -- it is the same word for two different things. Here it
+                # is a bool going into the simulator's own argv; there it is a
+                # string naming a headless *mode* ('native', 'webrtc', or empty
+                # for a window), read with .string_value. Left to leak, 'false'
+                # reaches launch_ros as a parameter value, which infers BOOL
+                # from it, and the node dies before Kit starts with
+                #   Trying to set parameter 'headless' to 'True' of type
+                #   'BOOL', expecting type 'STRING'
+                # Empty is the right value regardless: on the standalone path
+                # run_isaacsim ignores its own headless setting.
+                'headless': '',
                 'install_path': cfg('isaac_install_path'),
                 'version': cfg('isaac_version'),
                 'ros_distro': cfg('ros_distro'),
@@ -137,7 +152,7 @@ def generate_launch_description():
             'isaac_install_path', default_value='/isaac-sim',
             description='Isaac Sim install root'),
 
-        DeclareLaunchArgument('isaac_version', default_value='6.0.1'),
+        DeclareLaunchArgument('isaac_version', default_value='6.1.0'),
 
         DeclareLaunchArgument(
             'ros_distro', default_value=os.environ.get('ROS_DISTRO', 'humble')),

@@ -30,6 +30,8 @@ import os
 import sys
 import traceback
 
+from assets import asset_layer, resolve_world
+
 SHARE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 ROBOT_PRIM = '/World/turtlebot3'
@@ -52,6 +54,32 @@ SCAN_OFFSET = {
     'waffle': (-0.064, 0.0, 0.122),
     'waffle_pi': (-0.064, 0.0, 0.122),
 }
+
+# How models/lidar_configs/*.json maps onto the OmniLidar prim. Isaac Sim 6.0
+# dropped the JSON profile registry from the Python API -- Lidar.create(config=)
+# now names a stock USD asset out of SUPPORTED_LIDAR_CONFIGS, so a profile the
+# package ships has to be authored onto the prim attribute by attribute. Most
+# names carry over; these are the ones that do not.
+PROFILE_PREFIX = 'omni:sensor:Core:'
+PROFILE_RENAMES = {
+    'reportRateBaseHz': 'patternFiringRateHz',
+    'minReflectanceRange': 'minReflectionRangeM',
+    'wavelengthNm': 'waveLengthNm',
+}
+# Enumerations are lower or mixed case in a profile, upper case on the prim.
+PROFILE_TOKENS = (
+    'scanType', 'intensityProcessing', 'rotationDirection', 'rayType',
+    'intensityMappingType',
+)
+# Read from the profile's shape rather than copied across as an attribute.
+PROFILE_STRUCTURAL = ('emitterStateCount', 'emitterStates')
+# In the profile format, absent from the 6.0 schema. avgPowerW described the
+# emitter's average power; the schema exposes peakPowerW, which is a different
+# number, so it is dropped rather than guessed at.
+PROFILE_UNSUPPORTED = ('avgPowerW',)
+# The single emitter state the schema applies by default. A rotary 2D lidar
+# needs exactly one; nothing here authors a second.
+EMITTER_STATE = 's001'
 
 
 def parse_args():
@@ -84,7 +112,6 @@ from isaacsim import SimulationApp                                   # noqa: E40
 
 simulation_app = SimulationApp({'headless': args.headless})
 
-import carb                                                          # noqa: E402
 import isaacsim.core.experimental.utils.app as app_utils             # noqa: E402
 import isaacsim.core.experimental.utils.prim as prim_utils           # noqa: E402
 import isaacsim.core.experimental.utils.stage as stage_utils         # noqa: E402
@@ -207,6 +234,34 @@ def build_graph(chassis):
     )
 
 
+def profile_attributes(profile):
+    """Translate a lidar profile into OmniLidar attributes.
+
+    The profile is the package's sensor model and stays the source of truth;
+    this only restates it in the names and the case the schema uses. An
+    emitterStates entry becomes the attributes of one emitter state, which is
+    the schema's way of spelling the same table.
+    """
+    if len(profile['emitterStates']) != 1:
+        raise RuntimeError(
+            '{} emitter states in the profile; only {} is authored'.format(
+                len(profile['emitterStates']), EMITTER_STATE))
+
+    attributes = {}
+    for key, value in profile.items():
+        if key in PROFILE_STRUCTURAL or key in PROFILE_UNSUPPORTED:
+            continue
+        if key in PROFILE_TOKENS:
+            value = value.upper()
+        attributes[PROFILE_PREFIX + PROFILE_RENAMES.get(key, key)] = value
+
+    for key, value in profile['emitterStates'][0].items():
+        attributes['{}emitterState:{}:{}'.format(
+            PROFILE_PREFIX, EMITTER_STATE, key)] = value
+
+    return attributes
+
+
 def attach_lidar(chassis):
     """RTX lidar -> /scan. The returned sensor must be kept alive.
 
@@ -215,29 +270,46 @@ def attach_lidar(chassis):
     """
     from isaacsim.sensors.experimental.rtx import Lidar, LidarSensor
 
-    # profileBaseFolder is a settings list the renderer walks to resolve a
-    # profile by name, so the package can ship its own sensor model.
-    folder = os.path.join(SHARE, 'models', 'lidar_configs') + os.sep
-    settings = carb.settings.get_settings()
-    key = 'app/sensors/nv/lidar/profileBaseFolder'
-    folders = list(settings.get(key) or [])
-    if folder not in folders:
-        settings.set(key, folders + [folder])
-
+    folder = os.path.join(SHARE, 'models', 'lidar_configs')
     config_path = os.path.join(folder, args.lidar_config + '.json')
     if not os.path.isfile(config_path):
         raise RuntimeError('no lidar profile {} in {}'.format(
             args.lidar_config, folder))
 
+    with open(config_path) as f:
+        profile = json.load(f)['profile']
+    attributes = profile_attributes(profile)
+
     lidar = Lidar.create(
         path=chassis + '/lidar',
-        config=args.lidar_config,
+        attributes=attributes,
+        # Both of these are "keep whatever the asset authored" by default, which
+        # is right for a stock asset and wrong for a prim built from a profile:
+        # what stands instead is the schema's own default, and the schema does
+        # not know this lidar turns five times a second.
+        #
+        # accumulateOutputs off makes the model emit each render frame's slice
+        # of the sweep separately, and tickRate is 10 Hz against a 5 Hz
+        # revolution, so a tick lands mid-scan and never on a whole one. Either
+        # way the writer never sees a full revolution, and /scan is advertised
+        # and then silent -- no error, no warning, just no messages.
+        accumulate_outputs=True,
+        tick_rate=float(profile['scanRateBaseHz']),
         translations=[list(SCAN_OFFSET[args.model])],
     )
 
-    # Read back rather than trust the file: an unresolved profile falls back to
-    # a default, and these numbers are what say so.
     prim = prim_utils.get_prim_at_path(lidar.paths[0])
+
+    # Lidar.create only logs a warning for an attribute the prim does not have,
+    # which would leave that line of the profile quietly unapplied.
+    unknown = sorted(a for a in attributes if not prim.HasAttribute(a))
+    if unknown:
+        raise RuntimeError(
+            'the OmniLidar schema has no {}. {} and the schema have '
+            'drifted'.format(', '.join(unknown), config_path))
+
+    # Read back rather than trust the file: what the prim carries is what the
+    # renderer scans with, and these numbers are what say so.
     scan_hz = float(prim.GetAttribute('omni:sensor:Core:scanRateBaseHz').Get() or 0)
     firing_hz = int(prim.GetAttribute('omni:sensor:Core:patternFiringRateHz').Get() or 0)
     near = float(prim.GetAttribute('omni:sensor:Core:nearRangeM').Get() or 0)
@@ -245,8 +317,7 @@ def attach_lidar(chassis):
     if scan_hz <= 0 or firing_hz <= 0:
         raise RuntimeError('lidar prim has a zero scan or firing rate')
 
-    with open(config_path) as f:
-        expected = json.load(f)['profile']['scanRateBaseHz']
+    expected = profile['scanRateBaseHz']
     if abs(scan_hz - float(expected)) > 1e-6:
         raise RuntimeError(
             'lidar resolved to another profile: {} Hz on the prim, {} Hz in '
@@ -322,18 +393,15 @@ def build_stage():
     UsdLux.DistantLight.Define(stage, '/World/DistantLight').CreateIntensityAttr(1000)
 
     if args.world:
-        if not os.path.exists(args.world):
-            raise RuntimeError(
-                'no world at {}. Worlds are generated, see '
-                'worlds/'.format(args.world))
-        add_reference_to_stage(usd_path=args.world, prim_path=WORLD_PRIM)
+        add_reference_to_stage(usd_path=resolve_world(args.world),
+                               prim_path=WORLD_PRIM)
         simulation_app.update()
 
     if not os.path.exists(args.robot):
         raise RuntimeError(
             'no robot asset at {}. Build it with '
             'scripts/build_models.sh'.format(args.robot))
-    add_reference_to_stage(usd_path=args.robot, prim_path=ROBOT_PRIM)
+    add_reference_to_stage(usd_path=asset_layer(args.robot), prim_path=ROBOT_PRIM)
     simulation_app.update()
     while stage_utils.is_stage_loading():
         simulation_app.update()

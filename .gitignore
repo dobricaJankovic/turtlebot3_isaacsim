@@ -4,3 +4,10 @@ models/turtlebot3_waffle/
 models/turtlebot3_waffle_pi/
 worlds/*.usd
 worlds/*.usda
+
+# Generated nav2 maps: built from a world by scripts/build_map.py
+maps/*.pgm
+maps/*.yaml
+
+# Python bytecode, written by the container (root) when the scripts run
+__pycache__/

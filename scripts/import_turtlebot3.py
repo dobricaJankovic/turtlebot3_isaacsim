@@ -174,8 +174,16 @@ def verify(stage, root):
     Unresolved package:// URLs do not fail the import: each link becomes an
     empty Xform with the right transform and no mesh, and the inline collision
     primitives import either way, so the stage loads clean and renders nothing.
+
+    TraverseInstanceProxies is what makes that check answer the question it is
+    asking. The importer brings each visual mesh in as an instanceable Xform
+    referencing payloads/instances.usda, and a plain PrimRange stops dead at an
+    instance -- its contents live in a prototype, not under the instance itself.
+    Without the predicate every well-formed burger looks like the failure this
+    function exists to catch.
     """
-    meshes = [p for p in Usd.PrimRange(root) if p.IsA(UsdGeom.Mesh)]
+    meshes = [p for p in Usd.PrimRange(root, Usd.TraverseInstanceProxies())
+              if p.IsA(UsdGeom.Mesh)]
     if not meshes:
         raise RuntimeError(
             'no mesh geometry in {}. The package:// URLs did not resolve, so '
