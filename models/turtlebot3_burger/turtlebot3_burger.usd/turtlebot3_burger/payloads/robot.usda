@@ -1,0 +1,70 @@
+#usda 1.0
+(
+    customLayerData = {
+        string creator = "URDF USD Converter v0.1.3"
+    }
+    defaultPrim = "turtlebot3_burger"
+    doc = """Generated from Composed Stage of root layer /tmp/tmpncdvosru/turtlebot3_burger.usdc
+
+
+Generated from Composed Stage of root layer /tmp/urdf_import_turtlebot3_burger_metgmfqp/usdex_turtlebot3_burger/turtlebot3_burger.usdc
+
+
+Generated from Composed Stage of root layer /tmp/urdf_import_turtlebot3_burger_metgmfqp/temp_turtlebot3_burger/turtlebot3_burger.usd
+"""
+    kilogramsPerUnit = 1
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+over "turtlebot3_burger" (
+    prepend apiSchemas = ["IsaacRobotAPI"]
+)
+{
+    prepend rel isaac:physics:robotJoints = [
+        </turtlebot3_burger/Physics/wheel_left_joint>,
+        </turtlebot3_burger/Physics/wheel_right_joint>,
+    ]
+    prepend rel isaac:physics:robotLinks = [
+        </turtlebot3_burger/Geometry/base_footprint>,
+        </turtlebot3_burger/Geometry/base_footprint/wheel_left_link>,
+        </turtlebot3_burger/Geometry/base_footprint/wheel_right_link>,
+    ]
+    token isaac:robotType = "Wheeled"
+
+    over "Geometry"
+    {
+        over "base_footprint" (
+            prepend apiSchemas = ["IsaacLinkAPI"]
+        )
+        {
+            over "wheel_left_link" (
+                prepend apiSchemas = ["IsaacLinkAPI"]
+            )
+            {
+            }
+
+            over "wheel_right_link" (
+                prepend apiSchemas = ["IsaacLinkAPI"]
+            )
+            {
+            }
+        }
+    }
+
+    over "Physics"
+    {
+        over "wheel_left_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "wheel_right_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+    }
+}
+

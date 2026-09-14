@@ -1,11 +1,14 @@
-# Generated assets: built from turtlebot3_description by scripts/build_models.sh
-models/turtlebot3_burger/
-models/turtlebot3_waffle/
-models/turtlebot3_waffle_pi/
-worlds/*.usd
-worlds/*.usda
+# The robot assets under models/turtlebot3_*/ and the worlds under worlds/ are
+# generated, but they are COMMITTED rather than ignored: rebuilding them needs
+# an NVIDIA GPU, Isaac Sim and turtlebot3_description, which is too steep a
+# bootstrap for someone who only wants to clone the package and launch it, and
+# is not available in CI at all. They are 2 MB and change approximately never.
+# scripts/build_models.sh is the way to regenerate them, not the way to obtain
+# them. See README.md, "The robot asset and the worlds".
 
-# Generated nav2 maps: built from a world by scripts/build_map.py
+# Generated nav2 maps: built from a world by scripts/build_map.py. Still
+# ignored -- the warehouse .pgm alone is 1.4 MB and is rebuilt whenever the
+# slice, the bounds or the world changes.
 maps/*.pgm
 maps/*.yaml
 

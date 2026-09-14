@@ -32,15 +32,28 @@ cd ~/turtlebot3_ws && colcon build --symlink-install
 source install/setup.bash
 ```
 
-## Build the robot asset
+## The robot asset and the worlds
 
-USD models are generated from `turtlebot3_description`, not committed. Once per
-model:
+Both are committed, so a clone can launch without building anything: the burger
+under `models/turtlebot3_burger/` and `worlds/turtlebot3_world.usd`. They are
+*generated* files kept in the repository on purpose — regenerating them needs an
+NVIDIA GPU, Isaac Sim and `turtlebot3_description`, which is a bootstrap a user
+of the package should not have to clear, and one CI cannot clear at all.
+
+Regenerate after changing the model or the Isaac Sim version, not to obtain it:
 
 ```bash
 export TURTLEBOT3_MODEL=burger
 src/turtlebot3_isaacsim/scripts/build_models.sh burger
 ```
+
+`waffle` and `waffle_pi` are not committed — only `burger` has been checked
+against the URDF. Build them with the same script.
+
+The meshes come from ROBOTIS' `turtlebot3_description` (Apache-2.0) by way of
+Isaac Sim's URDF importer; this package is Apache-2.0 too. Maps are *not*
+committed: `scripts/build_map.py` rebuilds them, and the warehouse `.pgm` alone
+is 1.4 MB.
 
 ## Run
 

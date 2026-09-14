@@ -1,0 +1,186 @@
+#usda 1.0
+(
+    customLayerData = {
+        string creator = "URDF USD Converter v0.1.3"
+    }
+    defaultPrim = "turtlebot3_burger"
+    doc = """Generated from Composed Stage of root layer /tmp/tmpncdvosru/turtlebot3_burger.usdc
+
+
+Generated from Composed Stage of root layer /tmp/urdf_import_turtlebot3_burger_metgmfqp/usdex_turtlebot3_burger/turtlebot3_burger.usdc
+
+
+Generated from Composed Stage of root layer /tmp/urdf_import_turtlebot3_burger_metgmfqp/temp_turtlebot3_burger/turtlebot3_burger.usd
+
+
+Generated from Composed Stage of root layer /ws/src/turtlebot3_isaacsim/models/turtlebot3_burger/turtlebot3_burger.usd/turtlebot3_burger/payloads/base.usd
+"""
+    kilogramsPerUnit = 1
+    metersPerUnit = 1
+    subLayers = [
+        @./robot.usda@
+    ]
+    upAxis = "Z"
+)
+
+def Xform "turtlebot3_burger" (
+    prepend apiSchemas = ["GeomModelAPI"]
+    assetInfo = {
+        string name = "turtlebot3_burger"
+    }
+    kind = "component"
+)
+{
+    float3[] extentsHint = [(-0.100773506, -0.0891, -0.0001225009), (0.03677351, 0.0891, 0.191), (3.4028235e38, 3.4028235e38, 3.4028235e38), (-3.4028235e38, -3.4028235e38, -3.4028235e38), (3.4028235e38, 3.4028235e38, 3.4028235e38), (-3.4028235e38, -3.4028235e38, -3.4028235e38), (-0.102, -0.08902628, -0.000007156619), (0.038, 0.08902628, 0.19125)]
+
+    def Scope "Materials"
+    {
+    }
+
+    def Scope "Geometry"
+    {
+        def Xform "base_footprint"
+        {
+            def Xform "burger_base" (
+                instanceable = true
+                prepend references = @./instances.usda@</Instances/burger_base>
+            )
+            {
+                quatd xformOp:orient = (1, 0, 0, 0)
+                double3 xformOp:scale = (0.001000000047, 0.001000000047, 0.001000000047)
+                double3 xformOp:translate = (-0.032, 0, 0.01)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+            }
+
+            def Xform "lds" (
+                instanceable = true
+                prepend references = @./instances.usda@</Instances/lds>
+            )
+            {
+                quatd xformOp:orient = (1, 0, 0, 0)
+                double3 xformOp:scale = (0.001000000047, 0.001000000047, 0.001000000047)
+                double3 xformOp:translate = (-0.032, 0, 0.182)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+            }
+
+            def Xform "wheel_left_link"
+            {
+                quatf xformOp:orient = (0.7073883, -0.7068252, 0, 0)
+                float3 xformOp:scale = (1, 1, 1)
+                double3 xformOp:translate = (0, 0.08, 0.033)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                def Xform "left_tire" (
+                    instanceable = true
+                    prepend references = @./instances.usda@</Instances/left_tire>
+                )
+                {
+                    quatd xformOp:orient = (0.7073882818, 0.7068251967, 0, 0)
+                    double3 xformOp:scale = (0.001000000047, 0.001000000047, 0.001000000047)
+                    double3 xformOp:translate = (0, 0, 0)
+                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                }
+
+                def Cylinder "cylinder" (
+                    prepend apiSchemas = ["PhysicsCollisionAPI"]
+                )
+                {
+                    uniform token axis = "Z"
+                    float3[] extent = [(-0.033, -0.033, -0.009), (0.033, 0.033, 0.009)]
+                    double height = 0.018
+                    uniform token purpose = "guide"
+                    double radius = 0.033
+                    quatf xformOp:orient = (1, 0, 0, 0)
+                    float3 xformOp:scale = (1, 1, 1)
+                    double3 xformOp:translate = (0, 0, 0)
+                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                }
+            }
+
+            def Xform "wheel_right_link"
+            {
+                quatf xformOp:orient = (0.7073883, -0.7068252, 0, 0)
+                float3 xformOp:scale = (1, 1, 1)
+                double3 xformOp:translate = (0, -0.08, 0.033)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                def Xform "right_tire" (
+                    instanceable = true
+                    prepend references = @./instances.usda@</Instances/right_tire>
+                )
+                {
+                    quatd xformOp:orient = (0.7073882818, 0.7068251967, 0, 0)
+                    double3 xformOp:scale = (0.001000000047, 0.001000000047, 0.001000000047)
+                    double3 xformOp:translate = (0, 0, 0)
+                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                }
+
+                def Cylinder "cylinder" (
+                    prepend apiSchemas = ["PhysicsCollisionAPI"]
+                )
+                {
+                    uniform token axis = "Z"
+                    float3[] extent = [(-0.033, -0.033, -0.009), (0.033, 0.033, 0.009)]
+                    double height = 0.018
+                    uniform token purpose = "guide"
+                    double radius = 0.033
+                    quatf xformOp:orient = (1, 0, 0, 0)
+                    float3 xformOp:scale = (1, 1, 1)
+                    double3 xformOp:translate = (0, 0, 0)
+                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                }
+            }
+
+            def Cube "box" (
+                prepend apiSchemas = ["PhysicsCollisionAPI"]
+            )
+            {
+                float3[] extent = [(-0.5, -0.5, -0.5), (0.5, 0.5, 0.5)]
+                uniform token purpose = "guide"
+                double size = 1
+                quatf xformOp:orient = (1, 0, 0, 0)
+                float3 xformOp:scale = (0.14, 0.14, 0.143)
+                double3 xformOp:translate = (-0.032, 0, 0.08)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+            }
+
+            def Cube "box_1" (
+                prepend apiSchemas = ["PhysicsCollisionAPI"]
+                displayName = "box"
+            )
+            {
+                float3[] extent = [(-0.5, -0.5, -0.5), (0.5, 0.5, 0.5)]
+                uniform token purpose = "guide"
+                double size = 1
+                quatf xformOp:orient = (0.7073883, -0.7068252, 0, 0)
+                float3 xformOp:scale = (0.03, 0.009, 0.02)
+                double3 xformOp:translate = (-0.081, 7.963267107e-7, 0.005000000317)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+            }
+
+            def Cylinder "cylinder" (
+                prepend apiSchemas = ["PhysicsCollisionAPI"]
+            )
+            {
+                uniform token axis = "Z"
+                float3[] extent = [(-0.055, -0.055, -0.01575), (0.055, 0.055, 0.01575)]
+                double height = 0.0315
+                uniform token purpose = "guide"
+                double radius = 0.055
+                quatf xformOp:orient = (1, 0, 0, 0)
+                float3 xformOp:scale = (1, 1, 1)
+                double3 xformOp:translate = (-0.017, 0, 0.1755)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+            }
+        }
+    }
+
+    def Scope "Physics"
+    {
+    }
+
+    def Scope "VisualMaterials"
+    {
+    }
+}
+

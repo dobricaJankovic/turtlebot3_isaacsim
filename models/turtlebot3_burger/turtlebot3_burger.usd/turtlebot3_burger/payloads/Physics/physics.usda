@@ -1,0 +1,128 @@
+#usda 1.0
+(
+    customLayerData = {
+        string creator = "URDF USD Converter v0.1.3"
+    }
+    defaultPrim = "turtlebot3_burger"
+    doc = """Generated from Composed Stage of root layer /tmp/tmpncdvosru/turtlebot3_burger.usdc
+
+
+Generated from Composed Stage of root layer /tmp/urdf_import_turtlebot3_burger_metgmfqp/usdex_turtlebot3_burger/turtlebot3_burger.usdc
+
+
+Generated from Composed Stage of root layer /tmp/urdf_import_turtlebot3_burger_metgmfqp/temp_turtlebot3_burger/turtlebot3_burger.usd
+
+
+Generated from Composed Stage of root layer /ws/src/turtlebot3_isaacsim/models/turtlebot3_burger/turtlebot3_burger.usd/turtlebot3_burger/payloads/base.usd
+"""
+    kilogramsPerUnit = 1
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+over "turtlebot3_burger"
+{
+    over "Geometry"
+    {
+        over "base_footprint" (
+            prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsArticulationRootAPI", "NewtonArticulationRootAPI", "PhysicsMassAPI"]
+        )
+        {
+            bool newton:selfCollisionEnabled = 0
+            point3f physics:centerOfMass = (-0.004290092, 0, 0.030733855)
+            float3 physics:diagonalInertia = (0.0040328507, 0.0072156023, 0.007287135)
+            float physics:mass = 0.94473505
+            quatf physics:principalAxes = (0.63739604, 0.059758697, 0.7649233, 0.07104674)
+
+            over "wheel_left_link" (
+                prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+            )
+            {
+                point3f physics:centerOfMass = (0, 0, 0)
+                float3 physics:diagonalInertia = (0.000011175576, 0.000011192413, 0.000020712561)
+                float physics:mass = 0.02849894
+                quatf physics:principalAxes = (0.99999917, -3.6310576e-7, 0.00031132408, -0.0012585121)
+
+                over "cylinder" (
+                    prepend apiSchemas = ["NewtonCollisionAPI"]
+                )
+                {
+                }
+            }
+
+            over "wheel_right_link" (
+                prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+            )
+            {
+                point3f physics:centerOfMass = (0, 0, 0)
+                float3 physics:diagonalInertia = (0.000011175576, 0.000011192413, 0.000020712561)
+                float physics:mass = 0.02849894
+                quatf physics:principalAxes = (0.99999917, -3.6310576e-7, 0.00031132408, -0.0012585121)
+
+                over "cylinder" (
+                    prepend apiSchemas = ["NewtonCollisionAPI"]
+                )
+                {
+                }
+            }
+
+            over "box" (
+                prepend apiSchemas = ["NewtonCollisionAPI"]
+            )
+            {
+            }
+
+            over "box_1" (
+                prepend apiSchemas = ["NewtonCollisionAPI"]
+            )
+            {
+            }
+
+            over "cylinder" (
+                prepend apiSchemas = ["NewtonCollisionAPI"]
+            )
+            {
+            }
+        }
+    }
+
+    over "Physics"
+    {
+        def PhysicsRevoluteJoint "wheel_left_joint" (
+            prepend apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            float drive:angular:physics:damping = 1745.3292
+            float drive:angular:physics:stiffness = 0
+            uniform token drive:angular:physics:type = "force"
+            uniform token physics:axis = "Z"
+            custom rel physics:body0
+            prepend rel physics:body0 = </turtlebot3_burger/Geometry/base_footprint>
+            custom rel physics:body1
+            prepend rel physics:body1 = </turtlebot3_burger/Geometry/base_footprint/wheel_left_link>
+            point3f physics:localPos0 = (0, 0.08, 0.033)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (0.7073883, -0.7068252, 0, 0)
+            quatf physics:localRot1 = (1, 0, 0, 0)
+        }
+
+        def PhysicsRevoluteJoint "wheel_right_joint" (
+            prepend apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            float drive:angular:physics:damping = 1745.3292
+            float drive:angular:physics:stiffness = 0
+            uniform token drive:angular:physics:type = "force"
+            uniform token physics:axis = "Z"
+            custom rel physics:body0
+            prepend rel physics:body0 = </turtlebot3_burger/Geometry/base_footprint>
+            custom rel physics:body1
+            prepend rel physics:body1 = </turtlebot3_burger/Geometry/base_footprint/wheel_right_link>
+            point3f physics:localPos0 = (0, -0.08, 0.033)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (0.7073883, -0.7068252, 0, 0)
+            quatf physics:localRot1 = (1, 0, 0, 0)
+        }
+    }
+}
+
