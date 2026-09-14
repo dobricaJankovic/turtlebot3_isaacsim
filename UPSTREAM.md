@@ -502,8 +502,9 @@ ROS 2 workflows."
 The package was renamed `isaacsim` -> `isaacsim_bringup` and converted
 `ament_cmake` -> `ament_python` in 6.0. In 6.1.0 every repo-owned launch file
 was migrated from Python to XML, so `run_isaacsim.launch.py` becomes
-**`run_isaacsim.launch.xml`**. **[verified here]** the copy installed at
-`/ws/install/isaacsim_bringup` is still the `.py` form.
+**`run_isaacsim.launch.xml`**. `isaacsim.launch.py` includes it by that name
+through `AnyLaunchDescriptionSource`, which selects the launch frontend from the
+file extension and so is indifferent to which form a given tag ships.
 
 Arguments (XML defaults, `humble_ws`):
 

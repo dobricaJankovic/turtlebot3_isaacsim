@@ -23,7 +23,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.actions import IncludeLaunchDescription
 from launch.actions import OpaqueFunction
-from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.launch_description_sources import AnyLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 
 
@@ -82,8 +82,12 @@ def launch_setup(context):
 
     return [
         IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(
-                os.path.join(pkg_bringup, 'launch', 'run_isaacsim.launch.py')
+            # .launch.xml, not .launch.py: NVIDIA reimplemented the launcher as
+            # XML in the IsaacSim-6.1.0 tag. Same node, same arguments, plus a
+            # new python_script we do not use. AnyLaunchDescriptionSource picks
+            # the frontend off the extension, so this does not care which it is.
+            AnyLaunchDescriptionSource(
+                os.path.join(pkg_bringup, 'launch', 'run_isaacsim.launch.xml')
             ),
             launch_arguments={
                 'standalone': ' '.join(standalone),
