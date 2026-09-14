@@ -11,3 +11,6 @@ maps/*.yaml
 
 # Python bytecode, written by the container (root) when the scripts run
 __pycache__/
+
+# Personal Claude Code settings
+.claude/settings.local.json

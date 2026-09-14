@@ -67,13 +67,17 @@ def generate_launch_description():
             default_value='/Isaac/Environments/Simple_Warehouse/warehouse.usd',
             description='Stock environment path, a local .usd, or a URL'),
 
-        # Beside the shelving on the east side, not at the world origin. The
-        # warehouse is a 20 x 30 m hall whose middle is bare floor: the origin
-        # is 8.8 m from the nearest thing a ray can hit, so a 3.5 m lidar there
-        # returns nothing, /scan stays silent and AMCL has no features to match.
-        # This pose sits 1.8 m off the racks. Measured off the generated map,
-        # not guessed -- scripts/build_map.py.
-        DeclareLaunchArgument('x_pose', default_value='7.0'),
+        # Beside the shelving, not at the world origin. The warehouse is a
+        # 20 x 30 m hall whose middle is bare floor: the origin is 8.83 m from
+        # the nearest thing a ray can hit, so a 3.5 m lidar there returns
+        # nothing, /scan stays silent and AMCL has no features to match. This
+        # pose sits 1.83 m off the racks, measured against the stage itself --
+        # generator.get_occupied_positions(), not the .pgm. The mirror of it,
+        # +7.0, is 2.38 m off the opposite wall and also works; it was the
+        # default until the map's x axis was unmirrored, which moved every
+        # feature the pose had been read off. See DESIGN.md, "The occupancy map
+        # was flipped".
+        DeclareLaunchArgument('x_pose', default_value='-7.0'),
 
         DeclareLaunchArgument('y_pose', default_value='0.0'),
 

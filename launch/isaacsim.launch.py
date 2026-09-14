@@ -57,6 +57,7 @@ def launch_setup(context):
         os.path.join(pkg_isaacsim, 'scripts', 'turtlebot3_isaacsim.py'),
         '--model', TURTLEBOT3_MODEL,
         '--robot', robot,
+        '--world-z', cfg('world_z'),
         '--x-pose', cfg('x_pose'),
         '--y-pose', cfg('y_pose'),
         '--z-pose', cfg('z_pose'),
@@ -117,6 +118,17 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'world', default_value='',
             description='Path to an environment .usd. Empty for a ground plane'),
+
+        # Zero leaves the world reference untransformed, which is what every
+        # world that is authored floor-at-z=0 wants -- turtlebot3_world, the
+        # warehouse, the bare ground plane. Simple_Room is not one of those;
+        # simple_room.launch.py passes 0.7696. Whatever is passed here must
+        # also be passed to scripts/build_map.py, or the map is cut from a
+        # scene at a different height than the simulated one.
+        DeclareLaunchArgument(
+            'world_z', default_value='0.0',
+            description="Metres to raise the world by. Must match build_map.py's "
+                        '--world-z for the same world'),
 
         DeclareLaunchArgument(
             'robot', default_value='',

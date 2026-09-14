@@ -49,6 +49,8 @@ export TURTLEBOT3_MODEL=burger
 ros2 launch turtlebot3_isaacsim empty_world.launch.py
 ros2 launch turtlebot3_isaacsim turtlebot3_world.launch.py
 ros2 launch turtlebot3_isaacsim warehouse.launch.py
+ros2 launch turtlebot3_isaacsim simple_room.launch.py
+ros2 launch turtlebot3_isaacsim kitchen.launch.py
 ```
 
 ```bash
@@ -69,6 +71,34 @@ asset root, which is fetched on first use and cached (a few minutes, ~200 MB).
 `world` also accepts a local `.usd` or a URL. The same three spellings work on
 `isaacsim.launch.py`; see `scripts/assets.py`.
 
+`simple_room.launch.py` is the same idea one size down --
+`/Isaac/Environments/Simple_Room/simple_room.usd`, 8.82 x 8.16 m of interior
+against the warehouse's 24 x 38.8 m, so the room fits inside the burger's 3.5 m
+lidar and its map is 219 x 219 px. It spawns at `(-2.0, -2.0)`, 1.275 m off the
+nearest obstacle, because the world origin is inside the room's low table.
+
+This asset is authored with its floor at z = -0.7696 rather than 0, so the
+launch file passes `world_z:=0.7696` to stand it on the ground plane the
+simulator authors. Without that the robot floats at table-top height and the
+table is invisible to both the map and the scan; with it the table is a 0.78 m
+obstacle whose legs the lidar sees. **A map of this world must be built with the
+same `--world-z`** -- see "Maps" below, and DESIGN.md, "Standing the world on
+the ground plane".
+
+`kitchen.launch.py` is the smallest of the three: 5.148 x 4.352 m of interior,
+a U of cabinets, `kitchen_u_shape.usda` out of the `replicator_kitchen` pack.
+`kitchen_l_shape`, `kitchen_l_island`, `kitchen_g_shape` and `kitchen_peninsula`
+are drop-in `world:=` alternatives, though peninsula drags a 100 m outdoor
+backdrop behind its windows and so wants far wider map bounds than the others.
+Only `u_shape` has been measured — the rest are names from a listing.
+
+It passes **no** `world_z`, and that contrast is the useful part: this asset's
+floor is already at z = 0, so the default of 0.0 is right and the launch file
+authors no transform at all. Two stock environments, two different answers --
+check a new world's floor rather than assuming either. It spawns at the origin,
+which is the best spot in a room this small: every one of the map's 2064
+occupied cells is inside the burger's 3.5 m lidar from there.
+
 ## Maps
 
 `turtlebot3_navigation2` ships a map for `turtlebot3_world` and for nothing
@@ -80,15 +110,48 @@ isaacsim-python scripts/build_map.py \
     --output maps/warehouse
 ```
 
+```bash
+isaacsim-python scripts/build_map.py \
+    --world /Isaac/Environments/Simple_Room/simple_room.usd \
+    --output maps/simple_room \
+    --world-z 0.7696 \
+    --x-min -5.5 --x-max 5.5 --y-min -5.5 --y-max 5.5 \
+    --z-min 0.17 --z-max 0.19
+```
+
 That writes the `.pgm`/`.yaml` pair nav2 consumes, using Isaac Sim's own
 occupancy map generator against the stage's collision geometry. Maps are
 generated, not committed, like the worlds and the robot asset.
 
-**The warehouse map does not line up with the warehouse yet.** The geometry is
-right and nav2 drives with it, but the map is flipped relative to the stage, so
-the robot localises against the mirror image of the room. Do not trust it until
-that is fixed; `turtlebot3_world` and its shipped map are unaffected. See
-DESIGN.md, "The occupancy map is flipped".
+```bash
+isaacsim-python scripts/build_map.py \
+    --world /Isaac/Environments/replicator_kitchen/kitchen_u_shape.usda \
+    --output maps/kitchen \
+    --x-min -3.0 --x-max 3.0 --y-min -3.0 --y-max 3.0 \
+    --z-min 0.17 --z-max 0.19
+```
+
+The second command shows the three arguments worth setting per world, and the
+third shows the one that is conditional: the kitchen takes no `--world-z`,
+because its floor is already at z = 0 and `kitchen.launch.py` passes none
+either. What matters is not which value you pick but that the map builder and
+the launch file pick the same one.
+
+`--world-z 0.7696` **must be the same value `simple_room.launch.py` passes as
+`world_z`.** Nothing checks this for you: the map builder composes its own
+stage, so a mismatch produces a clean-looking map of the right room at the wrong
+height, which loads in nav2 and localises the robot into a scene that is not
+there. If you change one, change the other.
+
+The bounds are tight around the room rather than the default +-30 m, which is
+the difference between 219 x 219 px and 1200 x 1200. The slice is narrowed onto
+the burger's scanner alone -- 0.182 m above `base_footprint`, which with the
+world raised rests on the room's floor at z = 0.
+
+The warehouse map used to come out mirrored about its x axis; that was fixed on
+2026-09-14 and the map now matches the stage cell for cell. A map built with an
+older checkout is wrong — rebuild it. See DESIGN.md, "The occupancy map was
+flipped".
 
 ## Published interface
 
@@ -104,7 +167,8 @@ DESIGN.md, "The occupancy map is flipped".
 
 ## Launch arguments
 
-`turtlebot3_world.launch.py` and `empty_world.launch.py`:
+`turtlebot3_world.launch.py`, `empty_world.launch.py`, `warehouse.launch.py`,
+`simple_room.launch.py` and `kitchen.launch.py`:
 
 | argument | default | |
 |---|---|---|
@@ -112,6 +176,11 @@ DESIGN.md, "The occupancy map is flipped".
 | `x_pose`, `y_pose` | per world | spawn position |
 | `headless` | `false` | run with no window |
 
+The last three add `world`, defaulting to the stock environment each is named
+after. `simple_room.launch.py` also takes `world_z`, the metres to raise the
+world by so its floor meets z = 0; it defaults to `0.7696` there and to `0.0`
+everywhere else, including `kitchen.launch.py`, whose asset needs no correction.
+It has to match `build_map.py`'s `--world-z`.
 `isaacsim.launch.py` additionally takes `world`, `robot`, `z_pose`, `yaw`,
 `namespace`, `lidar`, `lidar_config`, `physics_hz`, `isaac_install_path`,
 `isaac_version`, `ros_distro`, `use_internal_libs`, `exclude_install_path` and
@@ -119,5 +188,9 @@ DESIGN.md, "The occupancy map is flipped".
 
 ## Status
 
-Not yet run against a GPU. See [DESIGN.md](DESIGN.md#status) for what is
-verified and what is not.
+Run against a GPU on Isaac Sim 6.1.0. All six launch files come up, the full
+published interface above is live, and `turtlebot3_navigation2` has reached a
+goal in the warehouse. What has not been re-run since the map writer was fixed
+on 2026-09-14 is a nav2 goal against a corrected map, in either world. See
+[DESIGN.md](DESIGN.md#status) for the measurements and for the list of what is
+still unverified.

@@ -25,12 +25,11 @@ arrives as an argument. See DESIGN.md.
 
 import argparse
 import json
-import math
 import os
 import sys
 import traceback
 
-from assets import asset_layer, resolve_world
+from assets import asset_layer, lift_world, resolve_world, set_pose
 
 SHARE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -88,6 +87,11 @@ def parse_args():
                         choices=sorted(WHEELS))
     parser.add_argument('--robot', default='')
     parser.add_argument('--world', default='')
+    # Metres to raise the world reference by, so that an environment
+    # whose floor is not at z=0 meets the ground plane this script
+    # authors there. build_map.py takes the same argument and MUST be
+    # given the same value; see assets.py.
+    parser.add_argument('--world-z', type=float, default=0.0)
     parser.add_argument('--x-pose', type=float, default=0.0)
     parser.add_argument('--y-pose', type=float, default=0.0)
     parser.add_argument('--z-pose', type=float, default=0.01)
@@ -122,7 +126,7 @@ from isaacsim.core.api.materials.physics_material import PhysicsMaterial  # noqa
 from isaacsim.core.api.objects import GroundPlane                    # noqa: E402
 from isaacsim.core.simulation_manager import SimulationManager       # noqa: E402
 from isaacsim.core.utils.stage import add_reference_to_stage, create_new_stage  # noqa: E402
-from pxr import Gf, PhysxSchema, Usd, UsdGeom, UsdLux, UsdPhysics, UsdShade  # noqa: E402
+from pxr import PhysxSchema, Usd, UsdGeom, UsdLux, UsdPhysics, UsdShade  # noqa: E402
 
 
 def prefixed(name):
@@ -341,34 +345,6 @@ def attach_lidar(chassis):
     return sensor
 
 
-def set_pose(prim_path, xyz, yaw):
-    """Place a prim, coping with xformOps the reference already authored.
-
-    XformCommonAPI cannot author a rotateXYZ over an `orient` op, and reports
-    it by returning False rather than raising.
-    """
-    prim = omni.usd.get_context().get_stage().GetPrimAtPath(prim_path)
-    common = UsdGeom.XformCommonAPI(prim)
-    if (common.SetTranslate(Gf.Vec3d(*[float(v) for v in xyz])) and
-            common.SetRotate(Gf.Vec3f(0.0, 0.0, math.degrees(yaw)),
-                             UsdGeom.XformCommonAPI.RotationOrderXYZ)):
-        return
-
-    ops = {op.GetOpName(): op
-           for op in UsdGeom.Xformable(prim).GetOrderedXformOps()}
-    translate = ops.get('xformOp:translate')
-    if translate is None:
-        raise RuntimeError('cannot place {}: no translate op'.format(prim_path))
-    translate.Set(Gf.Vec3d(*[float(v) for v in xyz]))
-    orient = ops.get('xformOp:orient')
-    if orient is not None:
-        half = yaw / 2.0
-        quat = Gf.Quatd(math.cos(half), Gf.Vec3d(0.0, 0.0, math.sin(half)))
-        orient.Set(Gf.Quatf(quat) if orient.GetTypeName() == 'quatf' else quat)
-    elif yaw:
-        raise RuntimeError('cannot rotate {}: no orient op'.format(prim_path))
-
-
 def build_stage():
     """Ground plane, light, world reference, robot reference."""
     create_new_stage()
@@ -406,9 +382,16 @@ def build_stage():
     while stage_utils.is_stage_loading():
         simulation_app.update()
 
+    # After the loading loop, not before it: lift_world's fallback path reads
+    # the xformOps the referenced layer authored, and those do not exist until
+    # the reference has composed.
+    lift_world(WORLD_PRIM, args.world_z)
+
     xyz = (args.x_pose, args.y_pose, args.z_pose)
     set_pose(ROBOT_PRIM, xyz, args.yaw)
-    print('world: {}'.format(args.world or 'none (ground plane)'), flush=True)
+    print('world: {}{}'.format(
+        args.world or 'none (ground plane)',
+        ' raised {:g} m'.format(args.world_z) if args.world_z else ''), flush=True)
     print('robot: {} at {} yaw {:g}'.format(
         args.robot, [round(v, 3) for v in xyz], args.yaw), flush=True)
 

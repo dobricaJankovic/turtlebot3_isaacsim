@@ -22,6 +22,10 @@
         --world /Isaac/Environments/Simple_Warehouse/warehouse.usd \
         --output maps/warehouse
 
+A world whose floor is not at z=0 needs `--world-z`, and needs the SAME value
+the simulator is given, or the map describes a scene at a different height than
+the one being driven through. README.md, "Maps", carries both commands.
+
 `turtlebot3_navigation2` ships a map for `turtlebot3_world` and for nothing
 else, so any other world needs one built. This is Isaac Sim's own occupancy map
 generator -- Tools > Robotics > Occupancy Map in the GUI,
@@ -47,6 +51,16 @@ def parse_args():
                         help='Path without extension; .pgm and .yaml are written')
     parser.add_argument('--cell-size', type=float, default=0.05,
                         help='Metres per pixel. nav2 convention is 0.05')
+
+    # Must match the simulator's --world-z for the same world, and there is no
+    # way for this script to check that: it composes its own stage. Pass the
+    # two from one place -- a launch file -- or write the number down once.
+    # Disagreeing by so much as the 0.77 m Simple_Room needs yields a map of
+    # the right room at the wrong height, which ray-casts cleanly and is wrong
+    # in exactly the silent way the mirrored map was. See assets.py.
+    parser.add_argument('--world-z', type=float, default=0.0,
+                        help="Raise the world by this much, as the simulator's "
+                             '--world-z does. The two MUST agree')
 
     # The slice the map is cut from. A 2D occupancy map is a horizontal section
     # of a 3D world, and the only section that matters is the one the lidar
@@ -94,7 +108,7 @@ import omni.physx                                                    # noqa: E40
 import omni.usd                                                      # noqa: E402
 from isaacsim.core.utils.stage import add_reference_to_stage, create_new_stage  # noqa: E402
 
-from assets import resolve_world                                     # noqa: E402
+from assets import lift_world, resolve_world                        # noqa: E402
 
 # The occupancy map generator is not part of the base experience this script
 # runs under, so its Python module does not exist until the extension is
@@ -122,6 +136,10 @@ def build():
     simulation_app.update()
     while stage_utils.is_stage_loading():
         simulation_app.update()
+
+    # Same prim path and same call the simulator makes, after the same loading
+    # loop, so that the stage ray-cast below is the stage that gets simulated.
+    lift_world('/World/env', args.world_z)
 
     # The generator ray-casts against PhysX, and PhysX only knows about the
     # stage once it has been stepped. Without this the map comes back entirely
@@ -154,16 +172,26 @@ def write_map(generator):
             'mapped'.format(width, height, len(buffer)))
 
     value = {OCCUPIED: PGM_OCCUPIED, FREE: PGM_FREE, UNKNOWN: PGM_UNKNOWN}
-    # The buffer runs +x along the row and +y up the column, both increasing
-    # from the minimum bound. A .pgm's first row is the TOP of the image, which
-    # is maximum y, so the rows are emitted in reverse. Getting this wrong
-    # mirrors the map about the x axis, and a mirrored map still localises
-    # against a symmetric room -- it just never converges in a real one.
+    # The buffer is row-major with the row running +y from the minimum bound,
+    # but x runs the OTHER way along it: NVIDIA's compute_coordinates() puts the
+    # image's top-left at (max_x, min_y) and its top-right at (min_x, min_y), so
+    # the first cell of a row is maximum x. Their own test_synthetic, in
+    # isaacsim/asset/gen/omap/tests/test_occupancy.py, pins seven buffer indices
+    # to cube positions that only fit that layout.
+    #
+    # nav2 reads a .pgm the other way round on both axes: the first row is the
+    # TOP of the image, which is maximum y, and the first column is minimum x,
+    # the one the yaml `origin` names. So rows are emitted in reverse AND each
+    # row is reversed. Getting either wrong mirrors the map, and a mirrored map
+    # still localises against a near-symmetric room -- it just localises the
+    # robot into the mirror image of it. Measured on the warehouse: with the
+    # x reversal, 99.8% of the .pgm's occupied cells land on a cell that
+    # get_occupied_positions() also reports; without it, 25.3%.
     rows = []
     for row in range(height - 1, -1, -1):
         start = row * width
         rows.append(bytes(value.get(int(round(v)), PGM_UNKNOWN)
-                          for v in buffer[start:start + width]))
+                          for v in buffer[start:start + width][::-1]))
 
     pgm = os.path.abspath(args.output + '.pgm')
     yaml = os.path.abspath(args.output + '.yaml')
@@ -175,8 +203,9 @@ def write_map(generator):
         for row in rows:
             f.write(row)
 
-    # origin is the world pose of the BOTTOM-LEFT pixel, which is the corner at
-    # both minimums -- the one the buffer starts from.
+    # origin is the world pose of the BOTTOM-LEFT pixel, which after the two
+    # reversals above is the corner at both minimums. Not where the buffer
+    # starts -- that is (max_x, min_y), the image's top-right.
     min_bound = generator.get_min_bound()
     with open(yaml, 'w') as f:
         f.write('image: {}\n'.format(os.path.basename(pgm)))
@@ -192,6 +221,8 @@ def write_map(generator):
     free = sum(r.count(PGM_FREE) for r in rows)
     print('map: {}x{} px at {} m/px, origin [{:.3f}, {:.3f}]'.format(
         width, height, args.cell_size, min_bound[0], min_bound[1]), flush=True)
+    print('     world {} raised {:g} m, slice z={}..{}'.format(
+        args.world, args.world_z, args.z_min, args.z_max), flush=True)
     print('     {} occupied, {} free, {} unknown'.format(
         occupied, free, width * height - occupied - free), flush=True)
     print('     {}'.format(yaml), flush=True)

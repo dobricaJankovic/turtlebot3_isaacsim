@@ -339,6 +339,75 @@ referencing the same meshes at the same poses. Keeping the meshes identical
 between the two backends is what makes a Gazebo run and an Isaac Sim run
 comparable at all; a separately modelled world quietly destroys that.
 
+### Standing the world on the ground plane
+
+**A stock environment is not obliged to put its floor at z = 0**, and the two
+small ones in this package disagree about it. That is the whole argument for
+`--world-z`, and it is worth stating with both cases side by side, because
+neither one on its own looks like a rule:
+
+| world | floor top | ships a GroundPlane | `world_z` |
+|---|---|---|---|
+| `Simple_Warehouse/warehouse.usd` | 0.0 | no | 0.0 |
+| `replicator_kitchen/kitchen_u_shape.usda` | 0.0000 | no | 0.0 |
+| `Simple_Room/simple_room.usd` | -0.7696 | **yes**, at -0.7695 | **0.7696** |
+
+Simple_Room is the odd one. Measured on the stage: its floor mesh tops out at
+z = -0.7696 rather than 0, and it ships its own `GroundPlane` there, plus a
+`DomeLight` and a `RectLight`, so it is not the pure environment described
+above either. NVIDIA's own `test_simple_room` encodes the offset as a map origin
+of `0.40 - 0.95`. The kitchen, half its size and from a different asset pack,
+needs nothing: its `Floor` collider tops out at exactly 0.0000 and it brings no
+plane of its own. **Check the floor before assuming either way.**
+
+Left alone, the simulator's own infinite ground plane at z = 0 wins -- it is
+higher, and PhysX ejects anything under it; `--z-pose -0.76` settles to the
+same place `--z-pose 0.01` does. The robot then drives 0.77 m above the floor
+you can see, and the room is an empty box: the only thing in it, `table_low`,
+had its top at z = +0.0104, one centimetre into the robot's body and seventeen
+below the beam, so it was an obstacle neither the scan nor the map could see.
+
+So `--world-z` raises the reference instead. `simple_room.launch.py` passes
+0.7696 and `assets.py`'s `lift_world()` applies it to `/World/env` with the same
+`set_pose()` the robot uses, after the reference has composed -- the fallback
+path there reads xformOps the referenced layer authored, which do not exist
+before that. Zero, the default, authors nothing at all, so `turtlebot3_world`,
+`empty_world`, the warehouse and the kitchen compose exactly as they did before
+the argument existed -- verified, not assumed: `lift_world(env, 0.0)` leaves
+`/World/env` with an xformOps list of `[]`, and the warehouse map rebuilt on the
+default still comes out at exactly 10087 occupied cells.
+
+Measured after the lift: floor mesh top z = +0.000029, the room's own plane
+z = +0.0001, `table_low` z = 0.000 to 0.780. The robot settles to a body
+bounding box of z = [-0.00054, +0.19126] -- and to the identical box with the
+package's ground plane deleted, which is the test that says which surface is
+holding it up. It is the room's.
+
+**Two coincident infinite colliders is fine here.** The package's plane and the
+room's now sit 0.1 mm apart. Over 2 s of resting contact: 0.00000 m of xy drift
+and 0.00000 m of z range, against 0.00000 m for the un-offset control. No
+jitter, no creep, so neither plane is suppressed. If a future asset does jitter,
+the fix is to skip authoring the package's `GroundPlane` when the world brings
+its own, not to nudge `world_z` off the floor.
+
+**The simulator and the map builder must be given the same `--world-z`.** This
+is the sharp edge. `scripts/build_map.py` composes its own stage and ray-casts
+that, so nothing cross-checks the two: give the simulator 0.7696 and the map
+builder nothing and you get a correct-looking map of the right room at the wrong
+height, which loads in nav2 and localises the robot into a scene that is not
+there. That is the same failure mode as the mirrored map below -- silent,
+plausible, and it survives a nav2 run. Both take the argument by the same name,
+both hand it to the same `lift_world()`, and README.md's "Maps" section carries
+the one command with the number in it.
+
+What the beam actually sees afterwards is worth knowing, because it is not the
+walls. The wall colliders start at z = 0.190 and the burger's beam sweeps
+0.182, just underneath them; what it hits is `floor_rim`, the skirting, which
+spans z = 0.000 to 0.190 and stands about 0.09 m proud of the wall face. Map
+and scan agree because both are cut from the same plane, which is all that
+matters to AMCL -- but a slice moved up to 0.19-0.21 would find the walls
+instead and shift the whole perimeter outwards by that 0.09 m.
+
 ## maps/
 
 Nav2 needs a map, and `turtlebot3_navigation2` ships exactly one — for
@@ -363,46 +432,50 @@ wider than the beam records obstacles the beam can miss, which is visible in a
 warehouse of open racks — the map shows a rack 2.5 m away and the scan passes
 between its uprights. Narrow the band onto one scanner to close that gap.
 
-### The occupancy map is flipped
+### The occupancy map was flipped
 
-**Open bug, do not trust `maps/warehouse.*`.** Observed 2026-09-13: the robot
-spawns beside the racks in the stage, but in RViz it localises against the
-mirror image of the hall — the props do not line up with the map. Nav2 still
-plans and drives, because the warehouse is nearly symmetric, which is precisely
-what makes this worth writing down: a mirrored map does not look broken.
+**Fixed 2026-09-14.** Maps built before that commit are mirrored; rebuild them.
 
-There are two candidates and they are independent:
+Observed 2026-09-13: the robot spawned beside the racks in the stage but, in
+RViz, localised against the mirror image of the hall. Nav2 still planned and
+drove, because the warehouse is nearly symmetric, which is what made it worth
+writing down — a mirrored map does not look broken.
 
-1. **The map is mirrored.** `write_map()` assumes the generator's buffer runs
-   `+x` along a row and `+y` up a column, and reverses the rows so the first
-   `.pgm` row is maximum y. NVIDIA's own `compute_coordinates()` in
-   `isaacsim/asset/gen/omap/utils/utils.py` implies a *different* convention:
-   it puts the image's top-left at `(max_x, min_y)` and its top-right at
-   `(min_x, min_y)`, so across a row **x decreases**, and down a column **y
-   increases**. That is the world rotated, not the layout assumed here. The
-   bounds used so far are square (±30 m), so a transpose cannot be caught by
-   comparing dimensions.
-2. **The scan is mirrored.** `rotationDirection: CW` in the lidar profile was
-   carried over from the stock profile and has never been checked against
-   REP-103 ordering — it is already the first entry under "Unverified" below.
-   A mirrored `LaserScan` would misalign against a perfectly good map.
+Two candidates were on the table, the map and the scan. It was the map.
 
-To tell them apart, test each without the other:
+`write_map()` assumed the generator's buffer ran `+x` along a row. It does not:
+NVIDIA's `compute_coordinates()` in
+`isaacsim/asset/gen/omap/utils/utils.py` puts the image's top-left at
+`(max_x, min_y)` and its top-right at `(min_x, min_y)`, so **x decreases across
+a row** while y increases down the column. Reversing the rows — which
+`write_map()` already did — is right for the y axis and leaves x mirrored. The
+fix is to reverse each row as well.
 
-- *Map alone, no ROS.* `generator.get_occupied_positions()` returns occupied
-  cells as world coordinates. Compare that set against the world coordinates
-  derived from the written `.pgm` by the pixel→world arithmetic in `write_map()`
-  and `build_map.py`'s yaml `origin`. If they disagree, it is (1), and the fix
-  is the row/column mapping.
-- *Scan alone, no map.* Put the robot at a known pose beside an asymmetric
-  feature and check the bearing of the returns against the stage geometry: a
-  wall on the robot's left must appear at positive bearing. If it appears at
-  negative, it is (2), and the fix is in `attach_lidar()`.
+Two independent confirmations, both worth keeping:
 
-Also note, for whoever picks this up: `generate_image()` in that same NVIDIA
-file tests the buffer for `1.0`/`0.0` while `update_settings()` is documented as
-taking the occupied/free/unknown values to write (this package passes 4/5/6, and
-4/5/6 is what comes back). Do not assume the two agree.
+1. *Offline.* `test_synthetic` in
+   `isaacsim/asset/gen/omap/tests/test_occupancy.py` pins seven buffer indices
+   to the cubes that produced them. All seven fit x-descending; six of the seven
+   fail under the old assumption. This needs no GPU and is the cheap way to
+   re-check the layout after an Isaac Sim upgrade.
+2. *Live, on 6.1.0.* Comparing the written `.pgm` against
+   `generator.get_occupied_positions()` — the DESIGN-documented test above —
+   the old writer put **25.3%** of occupied cells where ground truth has one.
+   The fixed writer puts **100.0%**, with zero stray cells, on a 10087-cell map.
+
+The scan was not the cause and `rotationDirection: CW` remains unverified; it
+stays under "Unverified" below, where it was.
+
+Knock-on, since it was silent: `warehouse.launch.py`'s `x_pose` default had been
+measured off the mirrored map, so the pose its comment described — 1.8 m off the
+racks — was really at `x = -7.0`. The default moved there. The old `+7.0` is
+2.38 m off the opposite wall, inside the lidar's 3.5 m, which is why the
+mirrored run looked healthy.
+
+Also note, for anyone reading that NVIDIA file: `generate_image()` tests the
+buffer for `1.0`/`0.0` while `update_settings()` is documented as taking the
+occupied/free/unknown values to write (this package passes 4/5/6, and 4/5/6 is
+what comes back). Do not assume the two agree.
 
 ## Status
 
@@ -415,9 +488,82 @@ this did not touch are left as they were.
 `/scan` at the profile's 5 Hz with real returns once something is in range;
 `/cmd_vel` driving the robot; `odom -> base_footprint` resolving; and
 `turtlebot3_navigation2` bringing up AMCL and Nav2 against a generated map,
-reaching a goal 6 m away with zero recoveries. The `.pgm` that run used is
-mirrored — see above — so the *navigation stack* is verified working and the
-*map* is not.
+reaching a goal 6 m away with zero recoveries. The `.pgm` that run used was
+mirrored, so that run verified the *navigation stack* and not the *map*.
+
+**Verified on 2026-09-14, on the same GPU:** the mirroring above, root-caused
+and fixed — the regenerated warehouse map now agrees with
+`get_occupied_positions()` on 100.0% of its 10087 occupied cells, with no stray
+cells. Also measured on that stage, against the same ground truth: the burger's
+world bounding box is 0.138 x 0.178 x 0.191 m, the real robot's dimensions, and
+stage, warehouse and robot asset are all `metersPerUnit = 1.0`. The robot is not
+undersized; the hall is 24 x 38.8 m. What has *not* been re-run since the fix is
+a live nav2 goal against the corrected map.
+
+**Verified on 2026-09-14, second session, same GPU:** `simple_room.launch.py`
+end to end, with the world raised 0.7696 m so the room's floor meets the ground
+plane -- see "Standing the world on the ground plane" above.
+
+`maps/simple_room`, built with the command in README.md, agrees with
+`get_occupied_positions()` on **100.0% of its 9630 occupied cells with zero
+stray cells**. 9630 against 8037 before the offset, and the 1593 new cells are
+the furniture the old slice passed straight through: 156 of them are
+`table_low`, and printed at 20 cm they are unmistakably **four legs**, not a
+slab, which is what a beam at 0.182 m through a table 0.780 m tall should find.
+
+Launched headless at the default `(-2.0, -2.0)`: `/clock` 51.6 Hz, `/odom`
+51.5 Hz, `/tf` 67.3 Hz (two publishers), `/joint_states` 52.8 Hz, `/scan`
+4.11 Hz against the profile's 5.0. `/scan` carries **220 of 360 beams as real
+returns**, nearest 1.293 m. Classifying each return by where it lands in world
+coordinates: **15 of them are the table**, at bearings +19..+22, +55..+62 and
++71..+74 deg and world x = [-1.282, 1.236], y = [-0.837, 0.812], i.e. inside
+`table_low`'s footprint -- three clusters, which is three of its legs. Before
+the offset that entire +0..+90 deg sector returned nothing at all. The room is
+no longer an empty box.
+
+The pose was re-chosen against the stage after the offset, not carried over:
+1.275 m to the nearest obstacle, 1.355 m to the nearest table leg, 64.4% of the
+360 one-degree bearings returning inside 3.5 m (up from 56.7%). Corners reach
+70.0% on 0.53-0.63 m of clearance, which is not a trade worth making.
+
+Two cautions about this map. The x-mirror control that caught the warehouse bug
+is nearly useless here -- the room is symmetric enough that a map mirrored in x
+still scores 95.2% (y-mirror scores 55.8%), so this map could not have caught
+that bug. And nothing cross-checks the simulator's `--world-z` against the map
+builder's; they agree because both were given 0.7696 by hand.
+
+**Verified on 2026-09-14, third session, same GPU:** `kitchen.launch.py`, on
+`/Isaac/Environments/replicator_kitchen/kitchen_u_shape.usda` -- the smallest
+world in the package at 5.148 x 4.352 m of interior, and the one that needs no
+`world_z` at all.
+
+`maps/kitchen` is 120 x 120 px and agrees with `get_occupied_positions()` on
+**100.0% of its 2064 occupied cells with zero stray cells**. The robot settles
+on the asset's own floor: body bounding box z = [-0.00064, +0.19116], identical
+with the package's ground plane deleted, and the asset ships no plane of its own
+for it to rest on instead.
+
+Launched headless at the default `(0.0, 0.0)`: `/clock` 53.2 Hz, `/odom`
+58.0 Hz, `/tf` 69.0 Hz, `/joint_states` 51.0 Hz, `/scan` 4.68 Hz against the
+profile's 5.0. `/scan` returns **357 of 360 beams** -- only three no-returns,
+the fullest scan any world here produces -- nearest 1.514 m against a
+stage-measured 1.525 m, and **99.2% real returns against the 99.2% bearing
+coverage predicted off `get_occupied_positions()` before the simulator started**.
+Splitting the returns by where they land, 256 are cabinetry standing in front of
+the wall plane and 101 are bare wall.
+
+**On mirroring, this map is better but not the answer.** Its controls are
+x-mirrored 83.7%, y-mirrored 60.4%, 180-rotated 56.3%. That beats Simple_Room,
+whose x-mirror still scores 95.2%, but it is nowhere near the warehouse's 25.3%
+under the old broken writer: the U of cabinets is very nearly symmetric about
+x = 0, so an x-flip still lands 5 cells in 6 on an occupied cell. **The
+warehouse remains the only map here that would loudly catch an x-mirroring
+regression.** A y-flip, this map would catch.
+
+Not a fault, but it will be in the log: PhysX rejects the triangle-mesh
+colliders on this asset's `CoffeeCupB01` -- a dynamic rigid body -- and falls
+back to a convex hull, printing two `[Error]` lines per run. The cup sits on a
+counter at about 0.9 m, well above the beam, and nothing here depends on it.
 
 **Also measured:** an empty world publishes no `/scan` at all, and neither does
 the middle of the warehouse floor: the burger's 3.5 m lidar reaches nothing
@@ -445,7 +591,10 @@ robot for real.
   is the first thing to check against Gazebo: a mirrored scan looks entirely
   plausible and is a correctness bug.
 - No-return is reported as `-1.0` by the RTX writer where Gazebo publishes
-  `inf`. That is the one field Nav2's obstacle layer filters on.
+  `inf`. That is the one field Nav2's obstacle layer filters on. Confirmed
+  present 2026-09-14 in Simple_Room -- 140 of 360 beams came back `-1.0` and
+  none came back `inf` -- so this is a real divergence, not a suspicion. What is
+  still unverified is what Nav2 does with it.
 - Gazebo's ray sweeps `0 → 6.28` rad; the writer here is configured
   `-180° → +180°`. Self-consistent, but the two backends do not label the same
   ray with the same index.
