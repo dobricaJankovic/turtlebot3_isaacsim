@@ -456,7 +456,7 @@ here reads a sensor or joint frame off the USD stage — `robot_state_publisher`
 own URDF and supplies every frame from `base_footprint` down, identically on
 Gazebo and Isaac Sim (`DESIGN.md`, "The three layers"). The simulator's only
 frame obligation is `odom -> base_footprint`, and a sensor's mount point is not
-looked up on a prim either: `SCAN_OFFSET` in `scripts/turtlebot3_isaacsim.py`
+looked up on a prim either: `SCAN_OFFSET` in `runtime/turtlebot3_isaacsim.py`
 hardcodes it as `(-0.032, 0.0, 0.182)` m off `base_footprint`, which is exactly
 `turtlebot3_description`'s `base_joint` (0, 0, 0.010) composed with `scan_joint`
 (-0.032, 0, 0.172) — verified against the URDF, not carried over from a prim

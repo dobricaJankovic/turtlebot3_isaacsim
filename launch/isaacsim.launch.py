@@ -54,7 +54,7 @@ def launch_setup(context):
     # run_isaacsim ignores every other argument on the standalone path, so
     # headless and lidar are the simulator's own argv rather than its.
     standalone = [
-        os.path.join(pkg_isaacsim, 'scripts', 'turtlebot3_isaacsim.py'),
+        os.path.join(pkg_isaacsim, 'runtime', 'turtlebot3_isaacsim.py'),
         '--model', TURTLEBOT3_MODEL,
         '--robot', robot,
         '--world-z', cfg('world_z'),

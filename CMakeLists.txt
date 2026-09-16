@@ -12,7 +12,7 @@ find_package(ament_cmake REQUIRED)
 ################################################################################
 # Install
 ################################################################################
-install(DIRECTORY launch maps models worlds
+install(DIRECTORY launch maps models runtime worlds
   DESTINATION share/${PROJECT_NAME}/
 )
 

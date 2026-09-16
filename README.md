@@ -84,7 +84,7 @@ generated one. It is not a file in this package: `world` defaults to
 `/Isaac/Environments/Simple_Warehouse/warehouse.usd`, a path under the Isaac Sim
 asset root, which is fetched on first use and cached (a few minutes, ~200 MB).
 `world` also accepts a local `.usd` or a URL. The same three spellings work on
-`isaacsim.launch.py`; see `scripts/assets.py`.
+`isaacsim.launch.py`; see `runtime/assets.py`.
 
 `simple_room.launch.py` is the same idea one size down --
 `/Isaac/Environments/Simple_Room/simple_room.usd`, 8.82 x 8.16 m of interior

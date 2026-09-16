@@ -33,6 +33,10 @@ not a broken checkout.
 
 ## Conventions
 
-- Scripts under `scripts/` run on Isaac Sim's Python (3.12 in the container),
-  not the system Python. They are not importable from a normal ROS 2 node.
+- `scripts/` is what a person runs by hand: `build_images.sh`,
+  `build_models.sh`, `build_map.py`, `import_turtlebot3.py`. `runtime/` is what
+  a launch file runs: `isaacsim.launch.py` invokes `turtlebot3_isaacsim.py`
+  directly, which imports `assets.py`. Everything in both directories runs on
+  Isaac Sim's Python (3.12 in the container), not the system Python, and none
+  of it is importable from a normal ROS 2 node.
 - Apache-2.0 header on every new file, matching the existing ones.

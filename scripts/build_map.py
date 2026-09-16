@@ -34,7 +34,7 @@ hand-drawn map; see UPSTREAM.md, "Worlds". It ray-casts the stage's collision
 geometry, so it maps what the lidar can actually hit rather than what the
 renderer draws.
 
-Runs on Isaac Sim's Python, like scripts/turtlebot3_isaacsim.py.
+Runs on Isaac Sim's Python, like runtime/turtlebot3_isaacsim.py.
 """
 
 import argparse

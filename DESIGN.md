@@ -71,7 +71,7 @@ apart when looking for the counterpart of any one of them:
 3. **Model plugins baked into `model.sdf`** — `diff_drive`, `ray_sensor`,
    `imu_sensor`, `joint_state_publisher`. These are the direct stand-ins for
    `turtlebot3_node` and `ld08_driver`, and their counterpart is the OmniGraph
-   built in `scripts/turtlebot3_isaacsim.py`.
+   built in `runtime/turtlebot3_isaacsim.py`.
 
 Note that `model.sdf` sets `publish_wheel_tf: false` deliberately: the wheel
 transforms are left to `robot_state_publisher` to derive from `/joint_states`.
@@ -153,7 +153,7 @@ same line after `play()`, so the same gate works on the standalone path.
 
 ## The interpreter split
 
-`scripts/turtlebot3_isaacsim.py` runs on Kit's Python with the system ROS 2
+`runtime/turtlebot3_isaacsim.py` runs on Kit's Python with the system ROS 2
 stripped from its search paths. It therefore cannot import `rclpy`, cannot call
 `get_package_share_directory`, and cannot run `xacro`.
 
@@ -238,7 +238,7 @@ purpose: a point cloud would force a `pointcloud_to_laserscan` node into every
 launch file that uses this package, which neither the real robot nor Gazebo
 needs.
 
-**Where the lidar sits.** `attach_lidar()` in `scripts/turtlebot3_isaacsim.py`
+**Where the lidar sits.** `attach_lidar()` in `runtime/turtlebot3_isaacsim.py`
 mounts the sensor at `SCAN_OFFSET[model]` off the articulation root
 (`base_footprint`), not off a `base_scan` prim — `merge_fixed_joints=True`
 means there is no such prim on the stage (see UPSTREAM.md, "The URDF
@@ -319,7 +319,7 @@ and gitignored, so a fresh clone has none and `turtlebot3_world.launch.py` fails
 with a message naming the missing file until one is built. `empty_world.launch.py`
 needs none.
 
-A world does not have to be a file here. `scripts/assets.py` resolves three
+A world does not have to be a file here. `runtime/assets.py` resolves three
 spellings of `--world`, and the simulator and the map builder share it so the
 map is always cut from the same scene that gets simulated:
 
