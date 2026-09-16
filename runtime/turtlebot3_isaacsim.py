@@ -107,7 +107,11 @@ def parse_args():
     parser.add_argument('--headless', action='store_true')
     parser.add_argument('--no-lidar', action='store_true')
     parser.add_argument('--lidar-config', default='turtlebot3_lds')
-    parser.add_argument('--physics-hz', type=float, default=60.0)
+    # 480 Hz of PhysX sub-steps, not 60. At 60 the wheels chatter rather than
+    # track -- it is the contact solve, not the drive, and no gain fixes it.
+    # The reasoning and the measurements are on the matching launch argument in
+    # launch/isaacsim.launch.py.
+    parser.add_argument('--physics-hz', type=float, default=480.0)
     parser.add_argument('--namespace', default='')
     args, _ = parser.parse_known_args()
 

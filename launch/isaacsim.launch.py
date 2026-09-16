@@ -162,7 +162,31 @@ def generate_launch_description():
             'lidar_config', default_value='turtlebot3_lds',
             description='RTX lidar profile from models/lidar_configs'),
 
-        DeclareLaunchArgument('physics_hz', default_value='60.0'),
+        # 480, not 60. The wheels do not track their commanded velocity at
+        # 60 Hz: they chatter. Commanded a steady -1.2121 rad/s the left wheel
+        # ranges over -2.91 to +1.04, and the mean of that, -0.79, is the
+        # "Isaac Sim under-rotates by 30%" that measurements/ has recorded
+        # since 2026-09-15.
+        #
+        # It is the contact solve, not the drive. Lift the robot off the ground
+        # and the joints track their command EXACTLY (error 0.0000 in every
+        # mode); every bit of the error appears only once there is contact, and
+        # sweeping the drive damping 1e3 -> 1e7 does not move it at all. What
+        # does move it is the timestep: the deficit in the pivot at 0.5 rad/s
+        # goes 25.5% -> 8.7% -> 3.8% across 60 / 240 / 480 Hz, and forward
+        # motion from 2.1% to 0.05%.
+        #
+        # Solver iteration count is deliberately NOT raised with it. That
+        # lowers the mean error further while tripling the chatter, which reads
+        # as a fix only if you report the mean.
+        #
+        # This is PhysX sub-steps per frame (set_dt -> timeStepsPerSecond), not
+        # the frame rate, so the OmniGraph and every ROS topic still tick at
+        # the render rate and the interface contract is unchanged.
+        #
+        # docs/worknotes/2026-09-17-lane-a-physics.md in tb3_sim2real has the
+        # measurements.
+        DeclareLaunchArgument('physics_hz', default_value='480.0'),
 
         DeclareLaunchArgument(
             'isaac_install_path', default_value='/isaac-sim',
