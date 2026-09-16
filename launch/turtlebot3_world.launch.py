@@ -16,53 +16,30 @@
 #
 # Authors: dobricaJankovic
 
+"""world.launch.py against worlds/turtlebot3_world.usd, this package's own."""
+
 import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
 
 
 def generate_launch_description():
-    launch_file_dir = os.path.join(
-        get_package_share_directory('turtlebot3_isaacsim'), 'launch')
+    pkg = get_package_share_directory('turtlebot3_isaacsim')
+    launch_file_dir = os.path.join(pkg, 'launch')
+    world = os.path.join(pkg, 'worlds', 'turtlebot3_world.usd')
 
-    use_sim_time = LaunchConfiguration('use_sim_time', default='true')
-    x_pose = LaunchConfiguration('x_pose', default='-2.0')
-    y_pose = LaunchConfiguration('y_pose', default='-0.5')
-    headless = LaunchConfiguration('headless', default='false')
-
-    world = os.path.join(
-        get_package_share_directory('turtlebot3_isaacsim'),
-        'worlds',
-        'turtlebot3_world.usd'
-    )
-
-    isaacsim_cmd = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(launch_file_dir, 'isaacsim.launch.py')
+    return LaunchDescription([
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(launch_file_dir, 'world.launch.py')
+            ),
+            launch_arguments={
+                'world': world,
+                'x_pose': '-2.0',
+                'y_pose': '-0.5',
+            }.items()
         ),
-        launch_arguments={
-            'world': world,
-            'x_pose': x_pose,
-            'y_pose': y_pose,
-            'headless': headless
-        }.items()
-    )
-
-    robot_state_publisher_cmd = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(launch_file_dir, 'robot_state_publisher.launch.py')
-        ),
-        launch_arguments={'use_sim_time': use_sim_time}.items()
-    )
-
-    ld = LaunchDescription()
-
-    # Add the commands to the launch description
-    ld.add_action(isaacsim_cmd)
-    ld.add_action(robot_state_publisher_cmd)
-
-    return ld
+    ])

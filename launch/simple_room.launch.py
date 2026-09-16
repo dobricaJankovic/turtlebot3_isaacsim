@@ -16,6 +16,13 @@
 #
 # Authors: dobricaJankovic
 
+"""world.launch.py against Isaac Sim's Simple_Room stock environment.
+
+The small counterpart of warehouse.launch.py: one stock room instead of a
+24 x 38.8 m hall, so the whole thing fits inside the burger's 3.5 m lidar and a
+map of it is 219 x 219 px rather than 1200 x 1200.
+"""
+
 import os
 
 from ament_index_python.packages import get_package_share_directory
@@ -30,37 +37,7 @@ def generate_launch_description():
     launch_file_dir = os.path.join(
         get_package_share_directory('turtlebot3_isaacsim'), 'launch')
 
-    use_sim_time = LaunchConfiguration('use_sim_time', default='true')
-    x_pose = LaunchConfiguration('x_pose')
-    y_pose = LaunchConfiguration('y_pose')
-    world_z = LaunchConfiguration('world_z')
-    headless = LaunchConfiguration('headless', default='false')
-    world = LaunchConfiguration('world')
-
-    isaacsim_cmd = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(launch_file_dir, 'isaacsim.launch.py')
-        ),
-        launch_arguments={
-            'world': world,
-            'world_z': world_z,
-            'x_pose': x_pose,
-            'y_pose': y_pose,
-            'headless': headless
-        }.items()
-    )
-
-    robot_state_publisher_cmd = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(launch_file_dir, 'robot_state_publisher.launch.py')
-        ),
-        launch_arguments={'use_sim_time': use_sim_time}.items()
-    )
-
-    ld = LaunchDescription([
-        # The small counterpart of warehouse.launch.py: one stock room instead
-        # of a 24 x 38.8 m hall, so the whole thing fits inside the burger's
-        # 3.5 m lidar and a map of it is 219 x 219 px rather than 1200 x 1200.
+    return LaunchDescription([
         # Measured on the stage: walls at x = +-4.41 and y = -3.31 (back) and
         # y = +4.85 (the window wall), so 8.82 x 8.16 m of interior, with one
         # 3.19 x 1.63 m low table centred on the origin and nothing else.
@@ -113,10 +90,15 @@ def generate_launch_description():
 
         DeclareLaunchArgument('y_pose', default_value='-2.0'),
 
-        DeclareLaunchArgument('headless', default_value='false'),
-
-        isaacsim_cmd,
-        robot_state_publisher_cmd,
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(launch_file_dir, 'world.launch.py')
+            ),
+            launch_arguments={
+                'world': LaunchConfiguration('world'),
+                'world_z': LaunchConfiguration('world_z'),
+                'x_pose': LaunchConfiguration('x_pose'),
+                'y_pose': LaunchConfiguration('y_pose'),
+            }.items()
+        ),
     ])
-
-    return ld

@@ -183,7 +183,9 @@ flipped".
 ## Launch arguments
 
 `turtlebot3_world.launch.py`, `empty_world.launch.py`, `warehouse.launch.py`,
-`simple_room.launch.py` and `kitchen.launch.py`:
+`simple_room.launch.py` and `kitchen.launch.py` are examples built on the
+shared `world.launch.py`, each declaring that one world's own defaults (see the
+comments in each for how the numbers were measured) and including it:
 
 | argument | default | |
 |---|---|---|

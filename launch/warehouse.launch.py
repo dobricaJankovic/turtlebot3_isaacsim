@@ -16,6 +16,12 @@
 #
 # Authors: dobricaJankovic
 
+"""world.launch.py against one of Isaac Sim's stock environments.
+
+Not a file in this package: `world` defaults to a path under the Isaac Sim
+asset root, fetched on first use and cached (a few minutes, ~200 MB).
+"""
+
 import os
 
 from ament_index_python.packages import get_package_share_directory
@@ -30,32 +36,7 @@ def generate_launch_description():
     launch_file_dir = os.path.join(
         get_package_share_directory('turtlebot3_isaacsim'), 'launch')
 
-    use_sim_time = LaunchConfiguration('use_sim_time', default='true')
-    x_pose = LaunchConfiguration('x_pose')
-    y_pose = LaunchConfiguration('y_pose')
-    headless = LaunchConfiguration('headless', default='false')
-    world = LaunchConfiguration('world')
-
-    isaacsim_cmd = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(launch_file_dir, 'isaacsim.launch.py')
-        ),
-        launch_arguments={
-            'world': world,
-            'x_pose': x_pose,
-            'y_pose': y_pose,
-            'headless': headless
-        }.items()
-    )
-
-    robot_state_publisher_cmd = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(launch_file_dir, 'robot_state_publisher.launch.py')
-        ),
-        launch_arguments={'use_sim_time': use_sim_time}.items()
-    )
-
-    ld = LaunchDescription([
+    return LaunchDescription([
         # Not a file in this package: one of Isaac Sim's stock environments,
         # named by its path under the asset root and fetched from there the
         # first time it is used. The other three in the same folder --
@@ -81,10 +62,14 @@ def generate_launch_description():
 
         DeclareLaunchArgument('y_pose', default_value='0.0'),
 
-        DeclareLaunchArgument('headless', default_value='false'),
-
-        isaacsim_cmd,
-        robot_state_publisher_cmd,
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(launch_file_dir, 'world.launch.py')
+            ),
+            launch_arguments={
+                'world': LaunchConfiguration('world'),
+                'x_pose': LaunchConfiguration('x_pose'),
+                'y_pose': LaunchConfiguration('y_pose'),
+            }.items()
+        ),
     ])
-
-    return ld

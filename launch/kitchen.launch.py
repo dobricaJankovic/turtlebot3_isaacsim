@@ -16,6 +16,12 @@
 #
 # Authors: dobricaJankovic
 
+"""world.launch.py against Isaac Sim's replicator_kitchen stock environment.
+
+The smallest world in the package: 5.148 x 4.352 m of interior inside 2.55 m
+walls, a U of cabinets open to the south.
+"""
+
 import os
 
 from ament_index_python.packages import get_package_share_directory
@@ -30,37 +36,7 @@ def generate_launch_description():
     launch_file_dir = os.path.join(
         get_package_share_directory('turtlebot3_isaacsim'), 'launch')
 
-    use_sim_time = LaunchConfiguration('use_sim_time', default='true')
-    x_pose = LaunchConfiguration('x_pose')
-    y_pose = LaunchConfiguration('y_pose')
-    headless = LaunchConfiguration('headless', default='false')
-    world = LaunchConfiguration('world')
-
-    isaacsim_cmd = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(launch_file_dir, 'isaacsim.launch.py')
-        ),
-        launch_arguments={
-            'world': world,
-            'x_pose': x_pose,
-            'y_pose': y_pose,
-            'headless': headless
-        }.items()
-    )
-
-    robot_state_publisher_cmd = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(launch_file_dir, 'robot_state_publisher.launch.py')
-        ),
-        launch_arguments={'use_sim_time': use_sim_time}.items()
-    )
-
-    ld = LaunchDescription([
-        # The smallest world in the package: 5.148 x 4.352 m of interior inside
-        # 2.55 m walls, a U of cabinets open to the south. Small enough that the
-        # burger's 3.5 m lidar reaches every mapped cell in it from the middle,
-        # which neither the warehouse nor the room manages.
-        #
+    return LaunchDescription([
         # The other four in the same folder -- kitchen_l_shape, kitchen_l_island,
         # kitchen_g_shape and kitchen_peninsula -- are drop-in alternatives, with
         # one caveat: peninsula drags a 100 x 100 m outdoor backdrop behind its
@@ -72,18 +48,18 @@ def generate_launch_description():
             default_value='/Isaac/Environments/replicator_kitchen/kitchen_u_shape.usda',
             description='Stock environment path, a local .usd, or a URL'),
 
-        # No world_z here, and that is the point worth stating out loud, given
-        # that simple_room.launch.py next door has to pass 0.7696.
+        # No world_z is declared here, and that is the point worth stating out
+        # loud, given that simple_room.launch.py next door has to pass 0.7696.
         #
         # A stock environment is not obliged to put its floor at z = 0, and the
         # two in this package disagree: Simple_Room is authored 0.7696 m below
         # the ground plane the simulator authors, this one is authored exactly
         # on it -- measured, the Floor collider tops out at z = 0.0000, and the
-        # asset ships no GroundPlane of its own at all. So isaacsim.launch.py's
-        # default of 0.0 is correct here, it authors no transform whatsoever,
-        # and the robot settles on the kitchen's own floor: body bounding box
-        # z = [-0.00064, +0.19116], unchanged when the package's ground plane is
-        # deleted, which is the test that says which surface holds it up.
+        # asset ships no GroundPlane of its own at all. So world.launch.py's
+        # default of 0.0 is correct here, unchanged, and the robot settles on
+        # the kitchen's own floor: body bounding box z = [-0.00064, +0.19116],
+        # unchanged when the package's ground plane is deleted, which is the
+        # test that says which surface holds it up.
         #
         # The practical consequence is that maps/kitchen is built with no
         # --world-z either. Check a new world's floor before assuming either
@@ -103,10 +79,14 @@ def generate_launch_description():
 
         DeclareLaunchArgument('y_pose', default_value='0.0'),
 
-        DeclareLaunchArgument('headless', default_value='false'),
-
-        isaacsim_cmd,
-        robot_state_publisher_cmd,
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(launch_file_dir, 'world.launch.py')
+            ),
+            launch_arguments={
+                'world': LaunchConfiguration('world'),
+                'x_pose': LaunchConfiguration('x_pose'),
+                'y_pose': LaunchConfiguration('y_pose'),
+            }.items()
+        ),
     ])
-
-    return ld

@@ -16,48 +16,29 @@
 #
 # Authors: dobricaJankovic
 
+"""world.launch.py with no world: a ground plane and light, nothing else.
+
+/scan is advertised but stays silent here -- the lidar is horizontal and an
+empty world has nothing within range for a ray to hit. Give it a world (see
+turtlebot3_world.launch.py and friends) to see it publish.
+"""
+
 import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
 
 
 def generate_launch_description():
     launch_file_dir = os.path.join(
         get_package_share_directory('turtlebot3_isaacsim'), 'launch')
 
-    use_sim_time = LaunchConfiguration('use_sim_time', default='true')
-    x_pose = LaunchConfiguration('x_pose', default='0.0')
-    y_pose = LaunchConfiguration('y_pose', default='0.0')
-    headless = LaunchConfiguration('headless', default='false')
-
-    # No world file: the simulator builds its own ground plane and light, so an
-    # empty world is the absence of a reference rather than a file.
-    isaacsim_cmd = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(launch_file_dir, 'isaacsim.launch.py')
+    return LaunchDescription([
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(launch_file_dir, 'world.launch.py')
+            ),
         ),
-        launch_arguments={
-            'x_pose': x_pose,
-            'y_pose': y_pose,
-            'headless': headless
-        }.items()
-    )
-
-    robot_state_publisher_cmd = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(launch_file_dir, 'robot_state_publisher.launch.py')
-        ),
-        launch_arguments={'use_sim_time': use_sim_time}.items()
-    )
-
-    ld = LaunchDescription()
-
-    # Add the commands to the launch description
-    ld.add_action(isaacsim_cmd)
-    ld.add_action(robot_state_publisher_cmd)
-
-    return ld
+    ])
