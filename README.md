@@ -17,7 +17,9 @@ where this package deliberately differs from it, is in
 ## Requirements
 
 - Isaac Sim 6.0
-- ROS 2 Humble or Jazzy
+- ROS 2 Humble — this is the `humble` branch, the tested one and the default.
+  A `jazzy` branch carries the untested Ubuntu 24.04 counterpart; see its
+  `docker/isaacsim-ros2/Dockerfile.jazzy`.
 - [`isaacsim_bringup`](https://github.com/isaac-sim/IsaacSim-ros_workspaces)
   from NVIDIA's `IsaacSim-ros_workspaces`, in the same workspace
 - `turtlebot3_description`
