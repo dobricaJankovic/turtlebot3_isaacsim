@@ -47,11 +47,19 @@ WHEELS = {
     'waffle_pi': {'separation': 0.287, 'radius': 0.033},
 }
 
-# base_footprint -> base_scan, from turtlebot3_description's URDF.
+# base_footprint -> base_scan, composed from turtlebot3_description's own
+# base_joint (base_footprint -> base_link) and scan_joint (base_link ->
+# base_scan), NOT scan_joint's origin alone -- that is relative to base_link,
+# which sits 0.010 m above base_footprint on all three models. waffle and
+# waffle_pi's z here were off by exactly that 0.010 m until 2026-09-17,
+# caught by scripts/smoke_test.py comparing against the URDF; burger's has
+# been correct throughout (verified in DESIGN.md, "Where the lidar sits").
+#   burger:    base_joint (0, 0, 0.010) + scan_joint (-0.032, 0, 0.172)
+#   waffle(_pi): base_joint (0, 0, 0.010) + scan_joint (-0.064, 0, 0.122)
 SCAN_OFFSET = {
     'burger': (-0.032, 0.0, 0.182),
-    'waffle': (-0.064, 0.0, 0.122),
-    'waffle_pi': (-0.064, 0.0, 0.122),
+    'waffle': (-0.064, 0.0, 0.132),
+    'waffle_pi': (-0.064, 0.0, 0.132),
 }
 
 # How models/lidar_configs/*.json maps onto the OmniLidar prim. Isaac Sim 6.0

@@ -50,7 +50,18 @@ src/turtlebot3_isaacsim/scripts/build_models.sh burger
 ```
 
 `waffle` and `waffle_pi` are not committed — only `burger` has been checked
-against the URDF. Build them with the same script.
+against the URDF. Build them with the same script, then check the result:
+
+```bash
+isaacsim-python scripts/smoke_test.py --model waffle
+```
+
+Headless, and independent of launching anything: the articulation root and the
+expected link set are there, the wheel joints carry drive parameters, the lidar
+profile parses, and the lidar's mount point still matches
+`turtlebot3_description`'s `base_scan` frame. That last check is not
+theoretical — it is what caught `waffle`/`waffle_pi`'s `SCAN_OFFSET` being
+10 mm short in `runtime/turtlebot3_isaacsim.py` before either was ever built.
 
 The meshes come from ROBOTIS' `turtlebot3_description` (Apache-2.0) by way of
 Isaac Sim's URDF importer; this package is Apache-2.0 too. Maps are *not*
