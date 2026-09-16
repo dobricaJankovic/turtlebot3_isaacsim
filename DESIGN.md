@@ -238,6 +238,19 @@ purpose: a point cloud would force a `pointcloud_to_laserscan` node into every
 launch file that uses this package, which neither the real robot nor Gazebo
 needs.
 
+**Where the lidar sits.** `attach_lidar()` in `scripts/turtlebot3_isaacsim.py`
+mounts the sensor at `SCAN_OFFSET[model]` off the articulation root
+(`base_footprint`), not off a `base_scan` prim — `merge_fixed_joints=True`
+means there is no such prim on the stage (see UPSTREAM.md, "The URDF
+importer"). For the burger that constant is `(-0.032, 0.0, 0.182)` m, which is
+`turtlebot3_description`'s `base_joint` origin `(0, 0, 0.010)` composed with
+`scan_joint`'s `(-0.032, 0, 0.172)`: exactly the offset a `base_footprint ->
+base_scan` transform would give, checked directly against
+`turtlebot3_burger.urdf` rather than assumed. A wrong constant here is a silent
+few-centimetre lidar offset — precisely what `worlds/`'s shared-geometry
+guarantee exists to prevent on the environment side — so this is re-derived by
+hand rather than trusted whenever the offset table changes.
+
 ## Physics materials
 
 Neither the URDF nor the URDF importer supplies friction or restitution, so

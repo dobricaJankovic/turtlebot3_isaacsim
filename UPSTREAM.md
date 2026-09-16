@@ -440,15 +440,41 @@ def Xform "inspire_hand" (
 ```
 
 Prim naming follows URDF link names, nested by the URDF tree, under an inserted
-`Geometry` scope — e.g.
-`/World/tb3_burger_processed/Geometry/base_footprint/base_link/base_scan`.
-`base_footprint` survives as a real prim, so `IsaacComputeTransformTree` frame
-ids match URDF frame names one-to-one.
+`Geometry` scope — e.g., with `merge_fixed_joints` left at the documented
+default, `/World/tb3_burger_processed/Geometry/base_footprint/base_link/base_scan`.
 
-**Leave `merge_fixed_joints` at `False`.** The docs say the GUI does not expose
-it and the importer does not merge by default, "so a GUI import preserves the
-sensor and inertial frames the URDF declares". Enabling it would destroy
-`base_footprint`, `base_scan` and `imu_link` — frames nav2 needs.
+**This package sets `merge_fixed_joints=True`
+(`scripts/import_turtlebot3.py:89`), diverging from what NVIDIA's own docs
+recommend.** Their advice: leave it at `False`. The GUI does not expose the
+option and the importer does not merge by default, "so a GUI import preserves
+the sensor and inertial frames the URDF declares" — and enabling it, they warn,
+destroys `base_footprint`, `base_scan` and `imu_link`, "frames nav2 needs".
+
+That warning describes a different architecture than this package's. Nothing
+here reads a sensor or joint frame off the USD stage — `robot_state_publisher`
+(`launch/robot_state_publisher.launch.py`) expands `turtlebot3_description`'s
+own URDF and supplies every frame from `base_footprint` down, identically on
+Gazebo and Isaac Sim (`DESIGN.md`, "The three layers"). The simulator's only
+frame obligation is `odom -> base_footprint`, and a sensor's mount point is not
+looked up on a prim either: `SCAN_OFFSET` in `scripts/turtlebot3_isaacsim.py`
+hardcodes it as `(-0.032, 0.0, 0.182)` m off `base_footprint`, which is exactly
+`turtlebot3_description`'s `base_joint` (0, 0, 0.010) composed with `scan_joint`
+(-0.032, 0, 0.172) — verified against the URDF, not carried over from a prim
+transform.
+
+`base_footprint` cannot be merged away by this flag regardless: it is the
+URDF's root link, so it has no parent fixed joint to fold across, and the
+committed asset confirms it survives as a real prim (`base_footprint` is the
+one that carries `PhysicsArticulationRootAPI`). What `merge_fixed_joints=True`
+does remove is `base_link`, `base_scan`, `imu_link` and `caster_back_link` as
+separate named prims — their geometry folds into `base_footprint` — and the
+committed asset confirms that too: only `base_footprint`, `wheel_left_link` and
+`wheel_right_link` remain as named links under `Geometry`. That is a
+deliberate simplification under this package's frame-ownership split, not an
+accident: `scripts/import_turtlebot3.py:155`'s "Root first, as the fallback for
+everything merge_fixed_joints folded into it" comment says so, and it is
+harmless exactly because nothing downstream of this package looks those prims
+up by name.
 
 `package://` resolution comes from `ros_package_paths` (API) or the GUI's ROS
 Package List. To import live from a running node (File > Import from ROS 2 URDF
@@ -710,10 +736,11 @@ Two findings that *confirm* existing work rather than contradict it:
    follow the URDF.
 2. **`odom` child frame.** Every documented example publishes `odom ->
    base_link`, including the `ROS2PublishRawTransformTree` defaults. TurtleBot3
-   and nav2 convention is `odom -> base_footprint`. The importer does preserve
-   `base_footprint` as a real prim, so the frame exists; the change would be
-   `PublishRawTF.inputs:childFrameId` and `PublishOdometry.inputs:chassisFrameId`.
-   Not addressed anywhere upstream.
+   and nav2 convention is `odom -> base_footprint`. `base_footprint` survives as
+   a real prim regardless of `merge_fixed_joints` — it is the URDF's root link,
+   so it is never a fixed joint's child (see "The URDF importer" above) — so the
+   frame exists; the change would be `PublishRawTF.inputs:childFrameId` and
+   `PublishOdometry.inputs:chassisFrameId`. Not addressed anywhere upstream.
 3. **`IsaacReadSimulationTime.resetOnStop`.** The OGN reference says the default
    is `True`; the Clock tutorial's prose implies it is `False` and tells you to
    set it. Verify at runtime.
