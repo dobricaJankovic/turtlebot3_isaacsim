@@ -25,6 +25,7 @@ from launch.actions import IncludeLaunchDescription
 from launch.actions import OpaqueFunction
 from launch.launch_description_sources import AnyLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
 
 
 def colcon_overlays():
@@ -52,6 +53,13 @@ def launch_setup(context):
         'turtlebot3_' + TURTLEBOT3_MODEL + '.usd')
 
     # run_isaacsim ignores every other argument on the standalone path, so
+    # The same table the simulator's DifferentialController uses, loaded by
+    # path: runtime/turtlebot3_isaacsim.py cannot be imported here because it
+    # pulls in Kit, and a second copy of the wheel geometry would be a scale
+    # error waiting to happen -- the forward map (/cmd_vel -> wheels) and the
+    # inverse (wheels -> /odom) have to agree or the difference reads as slip.
+    wheels = load_geometry(pkg_isaacsim)['WHEELS'][TURTLEBOT3_MODEL]
+
     # headless and lidar are the simulator's own argv rather than its.
     standalone = [
         os.path.join(pkg_isaacsim, 'runtime', 'turtlebot3_isaacsim.py'),
@@ -114,7 +122,39 @@ def launch_setup(context):
                 'dds_type': cfg('dds_type')
             }.items(),
         ),
+        # /odom and the odom -> base_footprint transform, integrated from the
+        # wheels. The simulator itself publishes only its chassis-prim pose, on
+        # /ground_truth/odom -- see nodes/wheel_odometry.py for why the two are
+        # not the same thing and why this is a ROS node rather than an
+        # OmniGraph one.
+        #
+        # A separate process, deliberately: it runs on the system Python with
+        # the system ROS 2, where rclpy and tf2_ros exist, rather than inside
+        # Kit's isolated 3.12. It is also what the real robot does -- the
+        # burger's odometry comes out of turtlebot3_node, not out of the motors.
+        Node(
+            package='turtlebot3_isaacsim',
+            executable='wheel_odometry',
+            name='wheel_odometry',
+            namespace=cfg('namespace') or None,
+            output='screen',
+            parameters=[{
+                'use_sim_time': True,
+                'wheel_radius': wheels['radius'],
+                'wheel_separation': wheels['separation'],
+            }],
+        ),
     ]
+
+
+def load_geometry(pkg_isaacsim):
+    """runtime/geometry.py as a plain dict, without importing the runtime."""
+    import importlib.util
+    path = os.path.join(pkg_isaacsim, 'runtime', 'geometry.py')
+    spec = importlib.util.spec_from_file_location('tb3_isaac_geometry', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return vars(module)
 
 
 def generate_launch_description():

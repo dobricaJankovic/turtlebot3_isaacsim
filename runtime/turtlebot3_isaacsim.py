@@ -30,6 +30,9 @@ import sys
 import traceback
 
 from assets import asset_layer, lift_world, resolve_world, set_pose
+# Wheel geometry is in its own module because the launch file needs it too,
+# to configure the odometry node, and cannot import this one without Kit.
+from geometry import WHEEL_JOINTS, WHEELS
 
 SHARE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -38,14 +41,6 @@ WORLD_PRIM = '/World/env'
 GRAPH_PATH = '/World/ROS2Interface'
 MATERIALS_PRIM = '/World/PhysicsMaterials'
 
-WHEEL_JOINTS = ['wheel_left_joint', 'wheel_right_joint']
-
-# Wheel separation and radius, as turtlebot3_gazebo's model.sdf states them.
-WHEELS = {
-    'burger': {'separation': 0.160, 'radius': 0.033},
-    'waffle': {'separation': 0.287, 'radius': 0.033},
-    'waffle_pi': {'separation': 0.287, 'radius': 0.033},
-}
 
 # base_footprint -> base_scan, composed from turtlebot3_description's own
 # base_joint (base_footprint -> base_link) and scan_joint (base_link ->
@@ -179,7 +174,6 @@ def build_graph(chassis):
                 ('PubClock', 'isaacsim.ros2.bridge.ROS2PublishClock'),
                 ('ComputeOdom', 'isaacsim.core.nodes.IsaacComputeOdometry'),
                 ('PubOdom', 'isaacsim.ros2.bridge.ROS2PublishOdometry'),
-                ('PubRawTF', 'isaacsim.ros2.bridge.ROS2PublishRawTransformTree'),
                 ('PubJointState', 'isaacsim.ros2.bridge.ROS2PublishJointState'),
                 ('SubTwist', 'isaacsim.ros2.bridge.ROS2SubscribeTwist'),
                 # ROS2SubscribeTwist emits vectord[3], DifferentialController
@@ -197,17 +191,13 @@ def build_graph(chassis):
 
                 ('OnTick.outputs:tick', 'ComputeOdom.inputs:execIn'),
                 ('OnTick.outputs:tick', 'PubOdom.inputs:execIn'),
-                ('OnTick.outputs:tick', 'PubRawTF.inputs:execIn'),
                 ('SimTime.outputs:simulationTime', 'PubOdom.inputs:timeStamp'),
-                ('SimTime.outputs:simulationTime', 'PubRawTF.inputs:timeStamp'),
                 ('ComputeOdom.outputs:position', 'PubOdom.inputs:position'),
                 ('ComputeOdom.outputs:orientation', 'PubOdom.inputs:orientation'),
                 ('ComputeOdom.outputs:linearVelocity',
                  'PubOdom.inputs:linearVelocity'),
                 ('ComputeOdom.outputs:angularVelocity',
                  'PubOdom.inputs:angularVelocity'),
-                ('ComputeOdom.outputs:position', 'PubRawTF.inputs:translation'),
-                ('ComputeOdom.outputs:orientation', 'PubRawTF.inputs:rotation'),
 
                 ('OnTick.outputs:tick', 'PubJointState.inputs:execIn'),
                 ('SimTime.outputs:simulationTime',
@@ -226,16 +216,34 @@ def build_graph(chassis):
             keys.SET_VALUES: [
                 ('PubClock.inputs:topicName', '/clock'),
 
+                # GROUND TRUTH, not odometry. IsaacComputeOdometry reads the
+                # chassis prim, so this is the robot's true pose -- which is
+                # not what /odom means on the real robot or in Gazebo, where
+                # it is integrated from the wheels and drifts. /odom is
+                # published by nodes/wheel_odometry.py instead, and this goes
+                # to the same topic and frame the Gazebo backend's P3D plugin
+                # uses, so the two simulators agree about what each name
+                # means.
+                #
+                # No TF from here. The odom -> base_footprint transform comes
+                # from the odometry node, so that the transform and /odom
+                # cannot disagree; P3D likewise publishes a topic and no
+                # transform.
                 ('ComputeOdom.inputs:chassisPrim', [usdrt.Sdf.Path(chassis)]),
-                ('PubOdom.inputs:topicName', prefixed('/odom')),
+                ('PubOdom.inputs:topicName', prefixed('/ground_truth/odom')),
+                # 'odom', not 'world': IsaacComputeOdometry reports the pose
+                # relative to where the robot STARTED, verified 2026-09-18 by
+                # spawning at (-2.0, -0.5) and reading (-0.0, -0.0) out of it.
+                # So its origin is the odom frame's origin, and subtracting
+                # /odom from this gives the odometry error directly.
+                #
+                # The Gazebo backend's P3D plugin is NOT the same: it reports
+                # world-absolute coordinates in frame 'world'. The two
+                # backends' ground truth therefore shares a topic and a
+                # meaning but not an origin, which is why every consumer of it
+                # uses deltas rather than absolute positions.
                 ('PubOdom.inputs:odomFrameId', prefixed('odom')),
                 ('PubOdom.inputs:chassisFrameId', prefixed('base_footprint')),
-
-                # Raw, not a full transform tree: everything below
-                # base_footprint belongs to robot_state_publisher.
-                ('PubRawTF.inputs:topicName', '/tf'),
-                ('PubRawTF.inputs:parentFrameId', prefixed('odom')),
-                ('PubRawTF.inputs:childFrameId', prefixed('base_footprint')),
 
                 ('PubJointState.inputs:topicName', prefixed('/joint_states')),
                 ('PubJointState.inputs:targetPrim', [usdrt.Sdf.Path(chassis)]),

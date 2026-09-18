@@ -194,6 +194,37 @@ static mount transform**, published to `tf_static`. Everything else below
 "The remaining robot-link transforms are calculated by an external
 `robot_state_publisher` that you launch separately."
 
+### Where this package deliberately departs from the reference — `/odom`
+
+**The one place this package does not follow upstream, and why.**
+
+`IsaacComputeOdometry` reads `chassisPrim`, so the `/odom` above carries the
+robot's TRUE pose. NVIDIA ships no encoder-based odometry OmniGraph node —
+there is nothing else to wire — so the reference graph publishes ground truth
+on `/odom` and every sample built on it inherits that.
+
+That is not what `/odom` means in ROS. `turtlebot3_node` integrates wheel
+encoders on the real burger and `gazebo_ros_diff_drive` integrates wheel
+rotation in Gazebo; both drift, and correcting that drift is precisely what
+AMCL and the `map`→`odom` transform exist to do. A simulator that publishes a
+pose which cannot drift makes localisation unrealistically easy on exactly one
+backend, and hides real wheel slip — measured here at **4.8% in a pivot**.
+
+So since 2026-09-18:
+
+- `/odom` and `odom`→`base_footprint` come from `nodes/wheel_odometry.py`,
+  which integrates `/joint_states`
+- `IsaacComputeOdometry` still runs, and publishes to `/ground_truth/odom`,
+  which the Gazebo side matches with a P3D plugin
+
+This is a departure from "trust upstream's own examples", taken knowingly. The
+rule is there because upstream's examples encode working node wiring that prose
+docs get wrong, and that part is still followed exactly — the graph above is
+unchanged apart from a topic name. What is rejected is upstream's *semantics*
+for one topic, which is a different kind of claim and one this repository is in
+a position to check, because it runs the same instrument against Gazebo and
+against hardware.
+
 `cmd_vel`:
 
 ```python

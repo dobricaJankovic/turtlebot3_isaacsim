@@ -185,11 +185,31 @@ flipped".
 |---|---|
 | `/clock` | `ROS2PublishClock` |
 | `/scan` | RTX lidar, `RtxLidarROS2PublishLaserScan` |
-| `/odom` | `IsaacComputeOdometry` → `ROS2PublishOdometry` |
-| `/tf` `odom`→`base_footprint` | `ROS2PublishRawTransformTree` |
+| `/odom` | `nodes/wheel_odometry.py`, integrated from `/joint_states` |
+| `/tf` `odom`→`base_footprint` | `nodes/wheel_odometry.py` |
+| `/ground_truth/odom` | `IsaacComputeOdometry` → `ROS2PublishOdometry` |
 | `/joint_states` | `ROS2PublishJointState` |
 | `/cmd_vel` | `ROS2SubscribeTwist` → `DifferentialController` |
 | `/tf` below `base_footprint` | `robot_state_publisher`, from the URDF |
+
+**`/odom` is integrated from the wheels, and drifts.** It used to be
+`IsaacComputeOdometry`, which reads the chassis prim -- the robot's TRUE pose.
+That is not what `/odom` means anywhere else: `turtlebot3_node` integrates
+encoders on the real burger and `gazebo_ros_diff_drive` integrates wheel
+rotation in Gazebo, and Nav2's whole job above `odom` is to correct the drift
+that produces. Publishing the truth there made this package the odd one out and
+gave AMCL nothing to correct.
+
+The true pose is still available, on `/ground_truth/odom` -- the same topic the
+Gazebo backend publishes its P3D pose on. Measured against it on 2026-09-18,
+`/odom` now over-reports a pivot by **4.8%** and a straight line by 0.08%,
+which is wheel slip and is what a real burger on two wheels and a plastic skid
+actually does.
+
+One asymmetry to know: this package's ground truth is relative to the SPAWN
+pose (verified -- spawning at `(-2.0, -0.5)` reads `(-0.0, -0.0)`), while
+Gazebo's P3D reports world-absolute coordinates. Same topic, same meaning,
+different origin, so consumers use deltas rather than absolute positions.
 
 ## Launch arguments
 

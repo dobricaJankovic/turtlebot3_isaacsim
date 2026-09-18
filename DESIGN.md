@@ -40,9 +40,17 @@ holds the URDF and owns everything below `base_footprint`; the simulator owns
 map --(amcl)--> odom --(simulator)--> base_footprint --(robot_state_publisher)--> the rest
 ```
 
-Three owners, no overlap. This is why the simulator publishes a *raw* transform
-rather than a full transform tree — a `ROS2PublishTransformTree` here would
+Three owners, no overlap. This is why the transform published here is a *raw*
+one rather than a full transform tree — a `ROS2PublishTransformTree` would
 fight `robot_state_publisher` for the same frames.
+
+Since 2026-09-18 that `odom`→`base_footprint` transform, and `/odom` with it,
+come from `nodes/wheel_odometry.py` rather than from the OmniGraph. Both from
+the same place deliberately: a transform and an odometry message that disagree
+are among the hardest faults to see. The simulator's own chassis-prim pose is
+ground truth and goes to `/ground_truth/odom`, publishing no transform at all —
+see `nodes/wheel_odometry.py` for why odometry that cannot drift is the wrong
+thing to put on `/odom`.
 
 ## What maps onto what
 

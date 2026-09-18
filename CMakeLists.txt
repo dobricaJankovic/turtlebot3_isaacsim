@@ -23,6 +23,14 @@ install(DIRECTORY scripts
   USE_SOURCE_PERMISSIONS
 )
 
+# A real ROS 2 executable, not installed data: it runs on the system Python
+# alongside the simulator, the way turtlebot3_node runs alongside the hardware.
+#   ros2 run turtlebot3_isaacsim wheel_odometry
+install(PROGRAMS nodes/wheel_odometry.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME wheel_odometry
+)
+
 ################################################################################
 # Macro for ament package
 ################################################################################
