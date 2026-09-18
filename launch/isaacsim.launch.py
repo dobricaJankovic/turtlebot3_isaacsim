@@ -162,11 +162,13 @@ def generate_launch_description():
             'lidar_config', default_value='turtlebot3_lds',
             description='RTX lidar profile from models/lidar_configs'),
 
-        # 480, not 60. The wheels do not track their commanded velocity at
-        # 60 Hz: they chatter. Commanded a steady -1.2121 rad/s the left wheel
-        # ranges over -2.91 to +1.04, and the mean of that, -0.79, is the
-        # "Isaac Sim under-rotates by 30%" that measurements/ has recorded
-        # since 2026-09-15.
+        # 240, not 60: four PhysX sub-steps per rendered frame at 60 Hz,
+        # which is the conventional ratio.
+        #
+        # The wheels do not track their commanded velocity at 60 Hz -- they
+        # chatter. Commanded a steady -1.2121 rad/s the left wheel ranges over
+        # -2.91 to +1.04, and the mean of that, -0.79, is the "Isaac Sim
+        # under-rotates by 30%" that measurements/ recorded from 2026-09-15.
         #
         # It is the contact solve, not the drive. Lift the robot off the ground
         # and the joints track their command EXACTLY (error 0.0000 in every
@@ -175,6 +177,15 @@ def generate_launch_description():
         # does move it is the timestep: the deficit in the pivot at 0.5 rad/s
         # goes 25.5% -> 8.7% -> 3.8% across 60 / 240 / 480 Hz, and forward
         # motion from 2.1% to 0.05%.
+        #
+        # 240 rather than 480 is a deliberate trade: it fixes forward motion
+        # completely and leaves roughly 8.7% in the pivot, for a real-time
+        # factor that makes an experiment matrix affordable. The underlying
+        # cause is the CYLINDRICAL wheel collider, which no solver here rolls
+        # exactly -- sub-stepping damps that symptom rather than removing it.
+        # Spherical colliders would remove it, and are deliberately not used:
+        # a sphere contacts at a point, and a cylinder is the more faithful
+        # model of a tyre for a robot that pivots on two wheels and a skid.
         #
         # Solver iteration count is deliberately NOT raised with it. That
         # lowers the mean error further while tripling the chatter, which reads
@@ -186,7 +197,7 @@ def generate_launch_description():
         #
         # docs/worknotes/2026-09-17-lane-a-physics.md in tb3_sim2real has the
         # measurements.
-        DeclareLaunchArgument('physics_hz', default_value='480.0'),
+        DeclareLaunchArgument('physics_hz', default_value='240.0'),
 
         DeclareLaunchArgument(
             'isaac_install_path', default_value='/isaac-sim',
