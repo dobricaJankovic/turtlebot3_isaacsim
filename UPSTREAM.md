@@ -734,9 +734,13 @@ documented path and should be a decision, not an accident.
    per upstream source already returns `<dir>/<robot>/<robot>.usda`. Line 213
    reports `args.output`, the directory, and the launch path then has to
    rediscover the entry-point layer. Plumb the return value through instead.
-3. **We do not use the documented source nodes.** Any TF or joint-state
-   publishing must go through `IsaacComputeTransformTree` and
-   `IsaacReadJointState`; `targetPrims` is deprecated.
+3. ~~**We do not use the documented source nodes.**~~ **Resolved.**
+   `/joint_states` now goes through `isaacsim.sensors.physics.IsaacReadJointState`
+   into `ROS2PublishJointState`, the wiring upstream's own
+   `standalone_examples/api/isaacsim.ros2.bridge/moveit.py` uses; the deprecated
+   `targetPrim` shortcut is gone. `IsaacComputeTransformTree` does not arise:
+   this package publishes no TF from the graph at all, by design -- see
+   DESIGN.md, "The three layers".
 4. **We publish the lidar through the Replicator writer**
    (`RtxLidarROS2PublishLaserScan` via `attach_writer`) rather than the
    `ROS2RtxLidarHelper` OmniGraph node. Both are documented — the writer form is

@@ -174,6 +174,16 @@ def build_graph(chassis):
                 ('PubClock', 'isaacsim.ros2.bridge.ROS2PublishClock'),
                 ('ComputeOdom', 'isaacsim.core.nodes.IsaacComputeOdometry'),
                 ('PubOdom', 'isaacsim.ros2.bridge.ROS2PublishOdometry'),
+                # ReadJointState -> PubJointState, not PubJointState alone.
+                # ROS2PublishJointState still accepts targetPrim in 6.1.0, but
+                # the schema calls the connected form "the preferred path" and
+                # upstream's own standalone_examples/api/isaacsim.ros2.bridge/
+                # moveit.py wires it this way: 6.0 turned the ROS 2 publishers
+                # into serializers and moved prim resolution into dedicated
+                # source nodes. /joint_states is what nodes/wheel_odometry.py
+                # integrates, so it is not a topic to leave on a deprecated
+                # input.
+                ('ReadJointState', 'isaacsim.sensors.physics.IsaacReadJointState'),
                 ('PubJointState', 'isaacsim.ros2.bridge.ROS2PublishJointState'),
                 ('SubTwist', 'isaacsim.ros2.bridge.ROS2SubscribeTwist'),
                 # ROS2SubscribeTwist emits vectord[3], DifferentialController
@@ -199,7 +209,31 @@ def build_graph(chassis):
                 ('ComputeOdom.outputs:angularVelocity',
                  'PubOdom.inputs:angularVelocity'),
 
-                ('OnTick.outputs:tick', 'PubJointState.inputs:execIn'),
+                ('OnTick.outputs:tick', 'ReadJointState.inputs:execIn'),
+                # execOut, not the raw tick: the publisher fires once the read
+                # actually has data rather than one evaluation ahead of it.
+                ('ReadJointState.outputs:execOut', 'PubJointState.inputs:execIn'),
+                ('ReadJointState.outputs:jointNames',
+                 'PubJointState.inputs:jointNames'),
+                ('ReadJointState.outputs:jointPositions',
+                 'PubJointState.inputs:jointPositions'),
+                ('ReadJointState.outputs:jointVelocities',
+                 'PubJointState.inputs:jointVelocities'),
+                ('ReadJointState.outputs:jointEfforts',
+                 'PubJointState.inputs:jointEfforts'),
+                ('ReadJointState.outputs:jointDofTypes',
+                 'PubJointState.inputs:jointDofTypes'),
+                ('ReadJointState.outputs:stageMetersPerUnit',
+                 'PubJointState.inputs:stageMetersPerUnit'),
+                # sensorTime is deliberately NOT connected, which is the one
+                # place this departs from moveit.py. It is a float32 and it
+                # would take over the message stamp; simulationTime is a double
+                # and is the same clock /clock carries. wheel_odometry.py
+                # divides by the difference of two consecutive stamps, and
+                # float32 seconds quantise to ~6e-5 s after a thousand seconds
+                # of simulation -- 0.3% of a 50 Hz step, injected into the
+                # twist for free. Every other publisher here is stamped from
+                # SimTime; this keeps /joint_states on the same clock.
                 ('SimTime.outputs:simulationTime',
                  'PubJointState.inputs:timeStamp'),
 
@@ -246,7 +280,7 @@ def build_graph(chassis):
                 ('PubOdom.inputs:chassisFrameId', prefixed('base_footprint')),
 
                 ('PubJointState.inputs:topicName', prefixed('/joint_states')),
-                ('PubJointState.inputs:targetPrim', [usdrt.Sdf.Path(chassis)]),
+                ('ReadJointState.inputs:prim', [usdrt.Sdf.Path(chassis)]),
 
                 ('SubTwist.inputs:topicName', prefixed('/cmd_vel')),
                 ('DiffController.inputs:wheelRadius', wheels['radius']),
