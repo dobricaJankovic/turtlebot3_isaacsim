@@ -83,8 +83,12 @@ services:
       # Sim install tree (all three checked, 6.1.0). So it has to sit in the
       # workspace and be built like any other package:
       #
-      #   cp -r /path/to/IsaacSim-ros_workspaces/humble_ws/src/isaacsim_bringup \
-      #         ~/turtlebot3_ws/src/
+      #   cd ~/turtlebot3_ws/src
+      #   git clone --branch IsaacSim-6.1.0 \
+      #       https://github.com/isaac-sim/IsaacSim-ros_workspaces.git
+      #
+      # Cloned rather than copied: a copy records no version and goes quiet when
+      # upstream moves. Drop a COLCON_IGNORE in NVIDIA's other example packages.
       #
       # Long syntax with create_host_path off on purpose: a plain bind mount of
       # a path that does not exist makes Docker create an empty root-owned
@@ -92,7 +96,7 @@ services:
       # 'isaacsim_bringup' not found" with an empty directory nobody can delete.
       # This way `up` refuses to start and says which path is missing.
       - type: bind
-        source: ../isaacsim_bringup
+        source: ../IsaacSim-ros_workspaces/humble_ws/src/isaacsim_bringup
         target: /ws/src/isaacsim_bringup
         bind:
           create_host_path: false
