@@ -4,8 +4,7 @@
 #
 #     scripts/build_models.sh [burger|waffle|waffle_pi]
 #
-# Run from a ROS 2 shell: the xacro expansion and the package lookup need the
-# ROS environment, the URDF import needs Isaac Sim's. See DESIGN.md.
+# Run from a ROS 2 shell, with Isaac Sim available.
 set -euo pipefail
 
 MODEL="${1:-${TURTLEBOT3_MODEL:-burger}}"
@@ -32,7 +31,6 @@ DESCRIPTION="$(ros2 pkg prefix --share turtlebot3_description)"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-# namespace:= expands the template's ${namespace} to nothing.
 xacro "$DESCRIPTION/urdf/turtlebot3_${MODEL}.urdf" namespace:= \
   > "$WORK/turtlebot3_${MODEL}.urdf"
 

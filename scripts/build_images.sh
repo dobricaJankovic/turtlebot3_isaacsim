@@ -1,22 +1,11 @@
 #!/usr/bin/env bash
 #
-# Build the two images, in order. The second is FROM the first, and docker
-# compose only builds one image per service, so the base cannot be a compose
-# service without pretending it is something you run.
-#
-#   docker/isaacsim-ros2/Dockerfile.humble -> isaacsim61-humble:ngc
-#       Isaac Sim 6.0 + ROS 2 Humble on Ubuntu 22.04. Generic: no TurtleBot3,
-#       no X11, no workspace. Verify it on its own with
-#       docker/isaacsim-ros2/verify.sh.
-#   docker/ros/Dockerfile                  -> turtlebot3_isaacsim:humble
-#       Everything specific to this repo, layered on top.
+# Build the base image, then the package image on top of it.
 #
 #   scripts/build_images.sh              # both
-#   scripts/build_images.sh --base-only  # just the base, e.g. before verify.sh
+#   scripts/build_images.sh --base-only  # just the base
 #
-# The Isaac Sim source needs `docker login nvcr.io` plus a one-time licence
-# acceptance in a browser for the same NGC org -- the repository is NOT
-# anonymously pullable; NGC hands out a token and then 401s on the manifest.
+# The Isaac Sim base is pulled from NGC: `docker login nvcr.io` first.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."

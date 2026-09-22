@@ -16,34 +16,7 @@
 #
 # Authors: dobricaJankovic
 
-"""Headless checks on a built robot asset, independent of running the sim.
-
-    isaacsim-python scripts/smoke_test.py
-    isaacsim-python scripts/smoke_test.py --model waffle
-
-Checks, in order:
-
-  1. the asset opens and has exactly one PhysicsArticulationRootAPI prim
-  2. the expected named links are present, and the ones merge_fixed_joints
-     folds away are confirmed absent rather than assumed (see UPSTREAM.md,
-     "The URDF importer")
-  3. the wheel joints' drive parameters, reported for both the PhysX and
-     MuJoCo Physics variants where both exist -- not asserted against a
-     target, since which variant runs and what it should be tuned to is
-     tonight's open question (see docs/worknotes/, F3/F4/A1/A2)
-  4. the lidar profile JSON parses and matches the one-emitter-state shape
-     runtime/turtlebot3_isaacsim.py's profile_attributes() assumes
-  5. runtime/turtlebot3_isaacsim.py's SCAN_OFFSET for this model equals
-     turtlebot3_description's base_joint composed with scan_joint -- read
-     back from the live source file with `ast`, not retyped here, so this
-     cannot drift out of sync with itself the way SCAN_OFFSET and the URDF
-     just did for waffle/waffle_pi (fixed alongside this script)
-
-Exits nonzero on the first failure. Does not need turtlebot3_description on
-the ROS 2 side: the composed offsets below are transcribed from its URDF,
-with the joint and the exact origin line named so they can be re-checked by
-eye.
-"""
+"""Headless checks on a built robot asset, independent of running the sim."""
 
 import argparse
 import ast
@@ -53,13 +26,6 @@ import sys
 
 SHARE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# turtlebot3_description's own base_joint (base_footprint -> base_link) is
-# (0, 0, 0.010) on all three models. Composed with scan_joint (base_link ->
-# base_scan) below, this is base_footprint -> base_scan -- what
-# SCAN_OFFSET in runtime/turtlebot3_isaacsim.py is supposed to hold.
-#   burger:      turtlebot3_burger.urdf,      scan_joint origin -0.032 0 0.172
-#   waffle:      turtlebot3_waffle.urdf,      scan_joint origin -0.064 0 0.122
-#   waffle_pi:   turtlebot3_waffle_pi.urdf,   scan_joint origin -0.064 0 0.122
 BASE_JOINT_Z = 0.010
 SCAN_JOINT_XZ = {
     'burger': (-0.032, 0.172),
@@ -68,8 +34,6 @@ SCAN_JOINT_XZ = {
 }
 
 EXPECTED_LINKS = ('base_footprint', 'wheel_left_link', 'wheel_right_link')
-# merge_fixed_joints=True folds these into base_footprint; their absence as
-# separate prims is the intended shape, not a defect. See UPSTREAM.md.
 MERGED_LINKS = ('base_link', 'base_scan', 'imu_link', 'caster_back_link')
 
 FAILURES = []
@@ -96,10 +60,7 @@ def parse_args():
 
 
 def check_scan_offset(model):
-    """§5: cross-check SCAN_OFFSET against the URDF without importing the
-    module it lives in -- runtime/turtlebot3_isaacsim.py starts a
-    SimulationApp at import time, so it is parsed with `ast` instead.
-    """
+    """Cross-check SCAN_OFFSET against the URDF, parsed with ast."""
     path = os.path.join(SHARE, 'runtime', 'turtlebot3_isaacsim.py')
     tree = ast.parse(open(path).read(), filename=path)
     offsets = None
@@ -149,8 +110,6 @@ def check_lidar_profile(config_name):
 def main():
     args = parse_args()
 
-    # §1-3 need the stage open; do the pure-Python checks first so a missing
-    # asset does not hide a config-file problem that would otherwise also fail.
     check_scan_offset(args.model)
     check_lidar_profile(args.lidar_config)
 

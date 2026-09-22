@@ -16,12 +16,7 @@
 #
 # Authors: dobricaJankovic
 
-"""world.launch.py with no world: a ground plane and light, nothing else.
-
-/scan is advertised but stays silent here -- the lidar is horizontal and an
-empty world has nothing within range for a ray to hit. Give it a world (see
-turtlebot3_world.launch.py and friends) to see it publish.
-"""
+"""world.launch.py with no world: a ground plane and light, nothing else."""
 
 import os
 

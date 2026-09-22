@@ -16,26 +16,7 @@
 #
 # Authors: dobricaJankovic
 
-"""Generate the nav2 map of a world, as a .pgm/.yaml pair.
-
-    isaacsim-python scripts/build_map.py \
-        --world /Isaac/Environments/Simple_Warehouse/warehouse.usd \
-        --output maps/warehouse
-
-A world whose floor is not at z=0 needs `--world-z`, and needs the SAME value
-the simulator is given, or the map describes a scene at a different height than
-the one being driven through. README.md, "Maps", carries both commands.
-
-`turtlebot3_navigation2` ships a map for `turtlebot3_world` and for nothing
-else, so any other world needs one built. This is Isaac Sim's own occupancy map
-generator -- Tools > Robotics > Occupancy Map in the GUI,
-`isaacsim.asset.gen.omap` here -- which is the documented substitute for a
-hand-drawn map; see UPSTREAM.md, "Worlds". It ray-casts the stage's collision
-geometry, so it maps what the lidar can actually hit rather than what the
-renderer draws.
-
-Runs on Isaac Sim's Python, like runtime/turtlebot3_isaacsim.py.
-"""
+"""Generate the nav2 map of a world, as a .pgm/.yaml pair."""
 
 import argparse
 import os
@@ -52,34 +33,13 @@ def parse_args():
     parser.add_argument('--cell-size', type=float, default=0.05,
                         help='Metres per pixel. nav2 convention is 0.05')
 
-    # Must match the simulator's --world-z for the same world, and there is no
-    # way for this script to check that: it composes its own stage. Pass the
-    # two from one place -- a launch file -- or write the number down once.
-    # Disagreeing by so much as the 0.77 m Simple_Room needs yields a map of
-    # the right room at the wrong height, which ray-casts cleanly and is wrong
-    # in exactly the silent way the mirrored map was. See assets.py.
     parser.add_argument('--world-z', type=float, default=0.0,
                         help="Raise the world by this much, as the simulator's "
                              '--world-z does. The two MUST agree')
 
-    # The slice the map is cut from. A 2D occupancy map is a horizontal section
-    # of a 3D world, and the only section that matters is the one the lidar
-    # sweeps: too low and the floor fills the map, too high and it misses the
-    # shelf legs the robot would hit. The default band spans both scanner
-    # heights -- base_scan is at 0.182 m on a burger and 0.122 m on a waffle.
-    #
-    # A band wider than the beam is not free: it records anything standing
-    # anywhere in that 15 cm, while the scan only ever reports what the one
-    # plane hits. In a warehouse of open racks that gap is visible -- the map
-    # shows a rack 2.5 m away and the beam passes cleanly between its uprights,
-    # so AMCL is matching against walls the robot cannot see. Narrow the band
-    # onto a single scanner to close it: --z-min 0.17 --z-max 0.19 for a burger.
     parser.add_argument('--z-min', type=float, default=0.10)
     parser.add_argument('--z-max', type=float, default=0.25)
 
-    # How far out to map, as a box around the origin. Generous by default: a
-    # cell that no ray reaches is recorded as unknown, which costs one byte and
-    # is what nav2 expects outside the walls anyway.
     parser.add_argument('--bounds', type=float, default=30.0,
                         help='Half-extent in metres, or --x-min/--x-max etc.')
     parser.add_argument('--x-min', type=float)
@@ -110,21 +70,13 @@ from isaacsim.core.utils.stage import add_reference_to_stage, create_new_stage  
 
 from assets import lift_world, resolve_world                        # noqa: E402
 
-# The occupancy map generator is not part of the base experience this script
-# runs under, so its Python module does not exist until the extension is
-# enabled -- importing it at the top fails with ModuleNotFoundError.
 app_utils.enable_extension('isaacsim.asset.gen.omap')
 simulation_app.update()
 
 from isaacsim.asset.gen.omap.bindings import _omap                   # noqa: E402
 
-# The three values generate2d() writes into the buffer. Arbitrary, but they have
-# to be told apart afterwards, and 0/1/2 would collide with float rounding.
 OCCUPIED, FREE, UNKNOWN = 4, 5, 6
 
-# nav2's map_server reads a .pgm as occupancy = (255 - pixel) / 255 when
-# negate is 0, then compares against the thresholds below. So black is a wall,
-# white is free, and mid-grey falls between the two thresholds and is unknown.
 PGM_OCCUPIED, PGM_FREE, PGM_UNKNOWN = 0, 254, 205
 OCCUPIED_THRESH, FREE_THRESH = 0.65, 0.196
 
@@ -137,22 +89,14 @@ def build():
     while stage_utils.is_stage_loading():
         simulation_app.update()
 
-    # Same prim path and same call the simulator makes, after the same loading
-    # loop, so that the stage ray-cast below is the stage that gets simulated.
     lift_world('/World/env', args.world_z)
 
-    # The generator ray-casts against PhysX, and PhysX only knows about the
-    # stage once it has been stepped. Without this the map comes back entirely
-    # unknown, which looks like a bad bounds argument rather than an empty
-    # collision scene.
     physx = omni.physx.get_physx_interface()
     physx.start_simulation()
     physx.update_simulation(1.0 / 60.0, 0.0)
 
     generator = _omap.Generator(physx, omni.usd.get_context().get_stage_id())
     generator.update_settings(args.cell_size, OCCUPIED, FREE, UNKNOWN)
-    # set_transform(origin, lower_bound, upper_bound): the bounds are relative
-    # to the origin, so an origin of 0 makes them world coordinates.
     generator.set_transform(
         (0.0, 0.0, 0.0),
         (args.x_min, args.y_min, args.z_min),
@@ -172,21 +116,6 @@ def write_map(generator):
             'mapped'.format(width, height, len(buffer)))
 
     value = {OCCUPIED: PGM_OCCUPIED, FREE: PGM_FREE, UNKNOWN: PGM_UNKNOWN}
-    # The buffer is row-major with the row running +y from the minimum bound,
-    # but x runs the OTHER way along it: NVIDIA's compute_coordinates() puts the
-    # image's top-left at (max_x, min_y) and its top-right at (min_x, min_y), so
-    # the first cell of a row is maximum x. Their own test_synthetic, in
-    # isaacsim/asset/gen/omap/tests/test_occupancy.py, pins seven buffer indices
-    # to cube positions that only fit that layout.
-    #
-    # nav2 reads a .pgm the other way round on both axes: the first row is the
-    # TOP of the image, which is maximum y, and the first column is minimum x,
-    # the one the yaml `origin` names. So rows are emitted in reverse AND each
-    # row is reversed. Getting either wrong mirrors the map, and a mirrored map
-    # still localises against a near-symmetric room -- it just localises the
-    # robot into the mirror image of it. Measured on the warehouse: with the
-    # x reversal, 99.8% of the .pgm's occupied cells land on a cell that
-    # get_occupied_positions() also reports; without it, 25.3%.
     rows = []
     for row in range(height - 1, -1, -1):
         start = row * width
@@ -203,9 +132,6 @@ def write_map(generator):
         for row in rows:
             f.write(row)
 
-    # origin is the world pose of the BOTTOM-LEFT pixel, which after the two
-    # reversals above is the corner at both minimums. Not where the buffer
-    # starts -- that is (max_x, min_y), the image's top-right.
     min_bound = generator.get_min_bound()
     with open(yaml, 'w') as f:
         f.write('image: {}\n'.format(os.path.basename(pgm)))
@@ -249,6 +175,4 @@ if __name__ == '__main__':
     finally:
         sys.stdout.flush()
         sys.stderr.flush()
-        # Matches the simulator: a graceful close aborts in carb's TaskGroup
-        # destructor and would mask the exit status.
         os._exit(status)

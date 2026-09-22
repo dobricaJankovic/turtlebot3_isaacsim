@@ -42,9 +42,6 @@ def generate_launch_description():
         'urdf',
         urdf_file_name)
 
-    # The URDF is a xacro template carrying a ${namespace} argument. Read as
-    # plain text every frame comes out named "${namespace}base_footprint".
-    # value_type=str stops the expanded XML being reinterpreted as YAML.
     robot_desc = ParameterValue(
         Command([
             'xacro ', urdf_path,

@@ -16,11 +16,7 @@
 #
 # Authors: dobricaJankovic
 
-"""world.launch.py against one of Isaac Sim's stock environments.
-
-Not a file in this package: `world` defaults to a path under the Isaac Sim
-asset root, fetched on first use and cached (a few minutes, ~200 MB).
-"""
+"""world.launch.py against one of Isaac Sim's stock environments."""
 
 import os
 
@@ -37,27 +33,11 @@ def generate_launch_description():
         get_package_share_directory('turtlebot3_isaacsim'), 'launch')
 
     return LaunchDescription([
-        # Not a file in this package: one of Isaac Sim's stock environments,
-        # named by its path under the asset root and fetched from there the
-        # first time it is used. The other three in the same folder --
-        # warehouse_with_forklifts, warehouse_multiple_shelves and
-        # full_warehouse -- are drop-in alternatives, and any local .usd or URL
-        # works here too. See UPSTREAM.md, "Worlds".
         DeclareLaunchArgument(
             'world',
             default_value='/Isaac/Environments/Simple_Warehouse/warehouse.usd',
             description='Stock environment path, a local .usd, or a URL'),
 
-        # Beside the shelving, not at the world origin. The warehouse is a
-        # 20 x 30 m hall whose middle is bare floor: the origin is 8.83 m from
-        # the nearest thing a ray can hit, so a 3.5 m lidar there returns
-        # nothing, /scan stays silent and AMCL has no features to match. This
-        # pose sits 1.83 m off the racks, measured against the stage itself --
-        # generator.get_occupied_positions(), not the .pgm. The mirror of it,
-        # +7.0, is 2.38 m off the opposite wall and also works; it was the
-        # default until the map's x axis was unmirrored, which moved every
-        # feature the pose had been read off. See DESIGN.md, "The occupancy map
-        # was flipped".
         DeclareLaunchArgument('x_pose', default_value='-7.0'),
 
         DeclareLaunchArgument('y_pose', default_value='0.0'),

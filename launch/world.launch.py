@@ -16,15 +16,7 @@
 #
 # Authors: dobricaJankovic
 
-"""The simulator plus robot_state_publisher, parameterised over a world.
-
-empty_world.launch.py, turtlebot3_world.launch.py, warehouse.launch.py,
-simple_room.launch.py and kitchen.launch.py are examples built on this: each
-declares its own world's default `world`/`world_z`/`x_pose`/`y_pose` -- with
-the comments recording how those numbers were measured -- and includes this
-file with them. Add a new world by adding another such wrapper, not by copying
-the isaacsim_cmd/robot_state_publisher_cmd pair below again.
-"""
+"""The simulator plus robot_state_publisher, parameterised over a world."""
 
 import os
 
@@ -72,9 +64,6 @@ def generate_launch_description():
             'world', default_value='',
             description='Path to an environment .usd. Empty for a ground plane'),
 
-        # Zero leaves the world reference untransformed -- what a
-        # floor-at-z=0 world wants. See isaacsim.launch.py's own declaration
-        # of this argument for the full rationale and the build_map.py tie-in.
         DeclareLaunchArgument(
             'world_z', default_value='0.0',
             description="Metres to raise the world by. Must match build_map.py's "

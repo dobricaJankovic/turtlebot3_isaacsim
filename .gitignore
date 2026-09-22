@@ -1,19 +1,10 @@
-# The robot assets under models/turtlebot3_*/ and the worlds under worlds/ are
-# generated, but they are COMMITTED rather than ignored: rebuilding them needs
-# an NVIDIA GPU, Isaac Sim and turtlebot3_description, which is too steep a
-# bootstrap for someone who only wants to clone the package and launch it, and
-# is not available in CI at all. They are 2 MB and change approximately never.
-# scripts/build_models.sh is the way to regenerate them, not the way to obtain
-# them. See README.md, "The robot asset and the worlds".
+# models/turtlebot3_*/ and worlds/ are generated but committed: rebuilding them
+# needs an NVIDIA GPU, Isaac Sim and turtlebot3_description.
 
-# Generated nav2 maps: built from a world by scripts/build_map.py. Still
-# ignored -- the warehouse .pgm alone is 1.4 MB and is rebuilt whenever the
-# slice, the bounds or the world changes.
+# Generated nav2 maps, rebuilt with scripts/build_map.py.
 maps/*.pgm
 maps/*.yaml
 
-# Python bytecode, written by the container (root) when the scripts run
 __pycache__/
 
-# Personal Claude Code settings
 .claude/settings.local.json

@@ -16,10 +16,7 @@
 #
 # Authors: dobricaJankovic
 
-"""Build the robot asset: turtlebot3_description's URDF -> USD.
-
-Driven by scripts/build_models.sh, which expands the xacro first. See DESIGN.md.
-"""
+"""Build the robot asset: turtlebot3_description's URDF -> USD."""
 
 import argparse
 import os
@@ -72,8 +69,6 @@ from pxr import PhysxSchema, Usd, UsdGeom, UsdPhysics, UsdShade            # noq
 
 def import_robot():
     """Convert the URDF. Returns the asset's .usda entry point."""
-    # The importer does not overwrite: given an existing turtlebot3_burger.usd
-    # it writes turtlebot3_burger_1 inside it and leaves the old asset behind.
     if os.path.isdir(args.output):
         shutil.rmtree(args.output)
     os.makedirs(os.path.dirname(args.output), exist_ok=True)
@@ -81,8 +76,6 @@ def import_robot():
     config = URDFImporterConfig(
         urdf_path=args.urdf,
         usd_path=args.output,
-        # Maps package://turtlebot3_description/<rel> -> <path>/<rel>, so this
-        # is the share directory itself, not its parent.
         ros_package_paths=[
             {'name': 'turtlebot3_description', 'path': args.description_share},
         ],
@@ -90,10 +83,7 @@ def import_robot():
         fix_base=False,
         robot_type='Wheeled',
         joint_drive_type='force',
-        # The graph drives the wheels through velocityCommand.
         joint_target_type='velocity',
-        # TODO unverified gain. Without it the importer warns that the actuator
-        # is created with no gain parameters.
         override_joint_damping=1.0e5,
         override_joint_stiffness=0.0,
     )
@@ -110,13 +100,7 @@ def articulation_root(stage):
 
 
 def physics_material(stage, path, friction, friction_combine=None):
-    """Define a non-bouncing surface.
-
-    Static and dynamic friction are the same number because nothing in the URDF
-    or in turtlebot3_gazebo's SDF distinguishes them. Combine modes are 'min' so
-    that "does not bounce" holds against whatever the other collider brings,
-    rather than being averaged back up by it.
-    """
+    """Define a non-bouncing surface."""
     material = UsdShade.Material.Define(stage, path)
     api = UsdPhysics.MaterialAPI.Apply(material.GetPrim())
     api.CreateStaticFrictionAttr().Set(float(friction))
@@ -130,30 +114,17 @@ def physics_material(stage, path, friction, friction_combine=None):
 
 
 def bind(prim, material):
-    """Bind for the physics purpose.
-
-    A plain Bind() writes material:binding, the render purpose, which PhysX
-    never reads. weakerThanDescendants lets the wheels override the root.
-    """
+    """Bind for the physics purpose."""
     UsdShade.MaterialBindingAPI.Apply(prim).Bind(
         material, UsdShade.Tokens.weakerThanDescendants, 'physics')
 
 
 def author_surfaces(stage, root):
-    """Surface properties, authored into the asset so it is self-contained.
-
-    The URDF supplies no friction or restitution and the importer binds no
-    material, so every collider lands on the PhysX fallback. A burger rests
-    permanently on its caster skid, and an elastic contact under that skid is a
-    rocking chair. Wheels get "must not slip", the skid stays slippery so it
-    does not fight them on in-place turns.
-    """
+    """Surface properties, authored into the asset so it is self-contained."""
     materials = root.GetPath().AppendChild('PhysicsMaterials')
     wheel = physics_material(stage, materials.AppendChild('wheel'), 1.0)
     chassis = physics_material(stage, materials.AppendChild('chassis'), 0.1, 'min')
 
-    # Root first, as the fallback for everything merge_fixed_joints folded into
-    # it; wheels second, overriding it.
     bind(root, chassis)
 
     for link in WHEEL_LINKS:
@@ -169,19 +140,7 @@ def author_surfaces(stage, root):
 
 
 def verify(stage, root):
-    """Fail on an import with no renderable geometry.
-
-    Unresolved package:// URLs do not fail the import: each link becomes an
-    empty Xform with the right transform and no mesh, and the inline collision
-    primitives import either way, so the stage loads clean and renders nothing.
-
-    TraverseInstanceProxies is what makes that check answer the question it is
-    asking. The importer brings each visual mesh in as an instanceable Xform
-    referencing payloads/instances.usda, and a plain PrimRange stops dead at an
-    instance -- its contents live in a prototype, not under the instance itself.
-    Without the predicate every well-formed burger looks like the failure this
-    function exists to catch.
-    """
+    """Fail on an import with no renderable geometry."""
     meshes = [p for p in Usd.PrimRange(root, Usd.TraverseInstanceProxies())
               if p.IsA(UsdGeom.Mesh)]
     if not meshes:
@@ -223,5 +182,4 @@ if __name__ == '__main__':
     finally:
         sys.stdout.flush()
         sys.stderr.flush()
-        # simulation_app.close() races a task-pool teardown and aborts.
         os._exit(status)

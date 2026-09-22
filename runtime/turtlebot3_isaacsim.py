@@ -16,12 +16,7 @@
 #
 # Authors: dobricaJankovic
 
-"""The simulator. Started by launch/isaacsim.launch.py, not by hand.
-
-Runs on Isaac Sim's Python, with the system ROS 2 stripped from its search
-paths, so rclpy and ament_index_python are unavailable here and every path
-arrives as an argument. See DESIGN.md.
-"""
+"""The simulator. Started by launch/isaacsim.launch.py, not by hand."""
 
 import argparse
 import json
@@ -30,8 +25,6 @@ import sys
 import traceback
 
 from assets import asset_layer, lift_world, resolve_world, set_pose
-# Wheel geometry is in its own module because the launch file needs it too,
-# to configure the odometry node, and cannot import this one without Kit.
 from geometry import WHEEL_JOINTS, WHEELS
 
 SHARE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -42,45 +35,24 @@ GRAPH_PATH = '/World/ROS2Interface'
 MATERIALS_PRIM = '/World/PhysicsMaterials'
 
 
-# base_footprint -> base_scan, composed from turtlebot3_description's own
-# base_joint (base_footprint -> base_link) and scan_joint (base_link ->
-# base_scan), NOT scan_joint's origin alone -- that is relative to base_link,
-# which sits 0.010 m above base_footprint on all three models. waffle and
-# waffle_pi's z here were off by exactly that 0.010 m until 2026-09-17,
-# caught by scripts/smoke_test.py comparing against the URDF; burger's has
-# been correct throughout (verified in DESIGN.md, "Where the lidar sits").
-#   burger:    base_joint (0, 0, 0.010) + scan_joint (-0.032, 0, 0.172)
-#   waffle(_pi): base_joint (0, 0, 0.010) + scan_joint (-0.064, 0, 0.122)
 SCAN_OFFSET = {
     'burger': (-0.032, 0.0, 0.182),
     'waffle': (-0.064, 0.0, 0.132),
     'waffle_pi': (-0.064, 0.0, 0.132),
 }
 
-# How models/lidar_configs/*.json maps onto the OmniLidar prim. Isaac Sim 6.0
-# dropped the JSON profile registry from the Python API -- Lidar.create(config=)
-# now names a stock USD asset out of SUPPORTED_LIDAR_CONFIGS, so a profile the
-# package ships has to be authored onto the prim attribute by attribute. Most
-# names carry over; these are the ones that do not.
 PROFILE_PREFIX = 'omni:sensor:Core:'
 PROFILE_RENAMES = {
     'reportRateBaseHz': 'patternFiringRateHz',
     'minReflectanceRange': 'minReflectionRangeM',
     'wavelengthNm': 'waveLengthNm',
 }
-# Enumerations are lower or mixed case in a profile, upper case on the prim.
 PROFILE_TOKENS = (
     'scanType', 'intensityProcessing', 'rotationDirection', 'rayType',
     'intensityMappingType',
 )
-# Read from the profile's shape rather than copied across as an attribute.
 PROFILE_STRUCTURAL = ('emitterStateCount', 'emitterStates')
-# In the profile format, absent from the 6.0 schema. avgPowerW described the
-# emitter's average power; the schema exposes peakPowerW, which is a different
-# number, so it is dropped rather than guessed at.
 PROFILE_UNSUPPORTED = ('avgPowerW',)
-# The single emitter state the schema applies by default. A rotary 2D lidar
-# needs exactly one; nothing here authors a second.
 EMITTER_STATE = 's001'
 
 
@@ -90,10 +62,6 @@ def parse_args():
                         choices=sorted(WHEELS))
     parser.add_argument('--robot', default='')
     parser.add_argument('--world', default='')
-    # Metres to raise the world reference by, so that an environment
-    # whose floor is not at z=0 meets the ground plane this script
-    # authors there. build_map.py takes the same argument and MUST be
-    # given the same value; see assets.py.
     parser.add_argument('--world-z', type=float, default=0.0)
     parser.add_argument('--x-pose', type=float, default=0.0)
     parser.add_argument('--y-pose', type=float, default=0.0)
@@ -102,10 +70,6 @@ def parse_args():
     parser.add_argument('--headless', action='store_true')
     parser.add_argument('--no-lidar', action='store_true')
     parser.add_argument('--lidar-config', default='turtlebot3_lds')
-    # 240 Hz of PhysX sub-steps, not 60: four per rendered frame at 60 Hz.
-    # At 60 the wheels chatter rather than track -- it is the contact solve,
-    # not the drive, and no gain fixes it. The reasoning and the measurements
-    # are on the matching launch argument in launch/isaacsim.launch.py.
     parser.add_argument('--physics-hz', type=float, default=240.0)
     parser.add_argument('--namespace', default='')
     args, _ = parser.parse_known_args()
@@ -143,11 +107,7 @@ def prefixed(name):
 
 
 def articulation_root():
-    """Find the prim carrying PhysicsArticulationRootAPI under the robot.
-
-    Searched rather than hard coded: the URDF importer has moved it between
-    releases, and a stale path yields an inert robot with no error.
-    """
+    """Find the prim carrying PhysicsArticulationRootAPI under the robot."""
     stage = omni.usd.get_context().get_stage()
     root = stage.GetPrimAtPath(ROBOT_PRIM)
     if not root.IsValid():
@@ -168,26 +128,14 @@ def build_graph(chassis):
         {'graph_path': GRAPH_PATH, 'evaluator_name': 'execution'},
         {
             keys.CREATE_NODES: [
-                # OnPlaybackTick is in omni.graph.action, not isaacsim.core.nodes.
                 ('OnTick', 'omni.graph.action.OnPlaybackTick'),
                 ('SimTime', 'isaacsim.core.nodes.IsaacReadSimulationTime'),
                 ('PubClock', 'isaacsim.ros2.bridge.ROS2PublishClock'),
                 ('ComputeOdom', 'isaacsim.core.nodes.IsaacComputeOdometry'),
                 ('PubOdom', 'isaacsim.ros2.bridge.ROS2PublishOdometry'),
-                # ReadJointState -> PubJointState, not PubJointState alone.
-                # ROS2PublishJointState still accepts targetPrim in 6.1.0, but
-                # the schema calls the connected form "the preferred path" and
-                # upstream's own standalone_examples/api/isaacsim.ros2.bridge/
-                # moveit.py wires it this way: 6.0 turned the ROS 2 publishers
-                # into serializers and moved prim resolution into dedicated
-                # source nodes. /joint_states is what nodes/wheel_odometry.py
-                # integrates, so it is not a topic to leave on a deprecated
-                # input.
                 ('ReadJointState', 'isaacsim.sensors.physics.IsaacReadJointState'),
                 ('PubJointState', 'isaacsim.ros2.bridge.ROS2PublishJointState'),
                 ('SubTwist', 'isaacsim.ros2.bridge.ROS2SubscribeTwist'),
-                # ROS2SubscribeTwist emits vectord[3], DifferentialController
-                # takes scalars, so the two cannot be wired directly.
                 ('BreakLinVel', 'omni.graph.nodes.BreakVector3'),
                 ('BreakAngVel', 'omni.graph.nodes.BreakVector3'),
                 ('DiffController',
@@ -210,8 +158,6 @@ def build_graph(chassis):
                  'PubOdom.inputs:angularVelocity'),
 
                 ('OnTick.outputs:tick', 'ReadJointState.inputs:execIn'),
-                # execOut, not the raw tick: the publisher fires once the read
-                # actually has data rather than one evaluation ahead of it.
                 ('ReadJointState.outputs:execOut', 'PubJointState.inputs:execIn'),
                 ('ReadJointState.outputs:jointNames',
                  'PubJointState.inputs:jointNames'),
@@ -225,15 +171,6 @@ def build_graph(chassis):
                  'PubJointState.inputs:jointDofTypes'),
                 ('ReadJointState.outputs:stageMetersPerUnit',
                  'PubJointState.inputs:stageMetersPerUnit'),
-                # sensorTime is deliberately NOT connected, which is the one
-                # place this departs from moveit.py. It is a float32 and it
-                # would take over the message stamp; simulationTime is a double
-                # and is the same clock /clock carries. wheel_odometry.py
-                # divides by the difference of two consecutive stamps, and
-                # float32 seconds quantise to ~6e-5 s after a thousand seconds
-                # of simulation -- 0.3% of a 50 Hz step, injected into the
-                # twist for free. Every other publisher here is stamped from
-                # SimTime; this keeps /joint_states on the same clock.
                 ('SimTime.outputs:simulationTime',
                  'PubJointState.inputs:timeStamp'),
 
@@ -250,32 +187,8 @@ def build_graph(chassis):
             keys.SET_VALUES: [
                 ('PubClock.inputs:topicName', '/clock'),
 
-                # GROUND TRUTH, not odometry. IsaacComputeOdometry reads the
-                # chassis prim, so this is the robot's true pose -- which is
-                # not what /odom means on the real robot or in Gazebo, where
-                # it is integrated from the wheels and drifts. /odom is
-                # published by nodes/wheel_odometry.py instead, and this goes
-                # to the same topic and frame the Gazebo backend's P3D plugin
-                # uses, so the two simulators agree about what each name
-                # means.
-                #
-                # No TF from here. The odom -> base_footprint transform comes
-                # from the odometry node, so that the transform and /odom
-                # cannot disagree; P3D likewise publishes a topic and no
-                # transform.
                 ('ComputeOdom.inputs:chassisPrim', [usdrt.Sdf.Path(chassis)]),
                 ('PubOdom.inputs:topicName', prefixed('/ground_truth/odom')),
-                # 'odom', not 'world': IsaacComputeOdometry reports the pose
-                # relative to where the robot STARTED, verified 2026-09-18 by
-                # spawning at (-2.0, -0.5) and reading (-0.0, -0.0) out of it.
-                # So its origin is the odom frame's origin, and subtracting
-                # /odom from this gives the odometry error directly.
-                #
-                # The Gazebo backend's P3D plugin is NOT the same: it reports
-                # world-absolute coordinates in frame 'world'. The two
-                # backends' ground truth therefore shares a topic and a
-                # meaning but not an origin, which is why every consumer of it
-                # uses deltas rather than absolute positions.
                 ('PubOdom.inputs:odomFrameId', prefixed('odom')),
                 ('PubOdom.inputs:chassisFrameId', prefixed('base_footprint')),
 
@@ -293,13 +206,7 @@ def build_graph(chassis):
 
 
 def profile_attributes(profile):
-    """Translate a lidar profile into OmniLidar attributes.
-
-    The profile is the package's sensor model and stays the source of truth;
-    this only restates it in the names and the case the schema uses. An
-    emitterStates entry becomes the attributes of one emitter state, which is
-    the schema's way of spelling the same table.
-    """
+    """Translate a lidar profile into OmniLidar attributes."""
     if len(profile['emitterStates']) != 1:
         raise RuntimeError(
             '{} emitter states in the profile; only {} is authored'.format(
@@ -321,11 +228,7 @@ def profile_attributes(profile):
 
 
 def attach_lidar(chassis):
-    """RTX lidar -> /scan. The returned sensor must be kept alive.
-
-    It owns the render product the writer draws from; letting it go out of
-    scope tears that down and /scan silently never appears.
-    """
+    """RTX lidar -> /scan. The returned sensor must be kept alive."""
     from isaacsim.sensors.experimental.rtx import Lidar, LidarSensor
 
     folder = os.path.join(SHARE, 'models', 'lidar_configs')
@@ -341,16 +244,6 @@ def attach_lidar(chassis):
     lidar = Lidar.create(
         path=chassis + '/lidar',
         attributes=attributes,
-        # Both of these are "keep whatever the asset authored" by default, which
-        # is right for a stock asset and wrong for a prim built from a profile:
-        # what stands instead is the schema's own default, and the schema does
-        # not know this lidar turns five times a second.
-        #
-        # accumulateOutputs off makes the model emit each render frame's slice
-        # of the sweep separately, and tickRate is 10 Hz against a 5 Hz
-        # revolution, so a tick lands mid-scan and never on a whole one. Either
-        # way the writer never sees a full revolution, and /scan is advertised
-        # and then silent -- no error, no warning, just no messages.
         accumulate_outputs=True,
         tick_rate=float(profile['scanRateBaseHz']),
         translations=[list(SCAN_OFFSET[args.model])],
@@ -358,16 +251,12 @@ def attach_lidar(chassis):
 
     prim = prim_utils.get_prim_at_path(lidar.paths[0])
 
-    # Lidar.create only logs a warning for an attribute the prim does not have,
-    # which would leave that line of the profile quietly unapplied.
     unknown = sorted(a for a in attributes if not prim.HasAttribute(a))
     if unknown:
         raise RuntimeError(
             'the OmniLidar schema has no {}. {} and the schema have '
             'drifted'.format(', '.join(unknown), config_path))
 
-    # Read back rather than trust the file: what the prim carries is what the
-    # renderer scans with, and these numbers are what say so.
     scan_hz = float(prim.GetAttribute('omni:sensor:Core:scanRateBaseHz').Get() or 0)
     firing_hz = int(prim.GetAttribute('omni:sensor:Core:patternFiringRateHz').Get() or 0)
     near = float(prim.GetAttribute('omni:sensor:Core:nearRangeM').Get() or 0)
@@ -381,7 +270,6 @@ def attach_lidar(chassis):
             'lidar resolved to another profile: {} Hz on the prim, {} Hz in '
             '{}'.format(scan_hz, expected, config_path))
 
-    # The writer does not read these off the prim, so pass them explicitly.
     sensor = LidarSensor(lidar, annotators=[])
     sensor.attach_writer(
         'RtxLidarROS2PublishLaserScan',
@@ -405,17 +293,12 @@ def build_stage():
     stage = omni.usd.get_context().get_stage()
     UsdGeom.Xform.Define(stage, '/World')
 
-    # GroundPlane authors restitution 0.8 when handed no material, and PhysX
-    # averages restitution, so the robot rocks on its caster skid and creeps
-    # with nothing commanding it. 'min' makes 0 hold against any other surface.
     floor = PhysicsMaterial(prim_path=MATERIALS_PRIM + '/floor',
                             static_friction=1.0, dynamic_friction=1.0,
                             restitution=0.0)
     PhysxSchema.PhysxMaterialAPI.Apply(
         floor.prim).CreateRestitutionCombineModeAttr().Set('min')
     GroundPlane(prim_path='/World/GroundPlane', physics_material=floor)
-    # GroundPlane binds only its mesh collider, leaving the infinite
-    # collisionPlane beside it on the PhysX fallback material.
     UsdShade.MaterialBindingAPI.Apply(
         stage.GetPrimAtPath('/World/GroundPlane')).Bind(
             floor.material, UsdShade.Tokens.weakerThanDescendants, 'physics')
@@ -436,9 +319,6 @@ def build_stage():
     while stage_utils.is_stage_loading():
         simulation_app.update()
 
-    # After the loading loop, not before it: lift_world's fallback path reads
-    # the xformOps the referenced layer authored, and those do not exist until
-    # the reference has composed.
     lift_world(WORLD_PRIM, args.world_z)
 
     xyz = (args.x_pose, args.y_pose, args.z_pose)
@@ -451,11 +331,7 @@ def build_stage():
 
 
 def check_surfaces():
-    """Refuse a robot asset whose colliders carry no surface properties.
-
-    Such an asset loads, plays and publishes correctly and simply never
-    settles, which reads as a physics-tuning problem rather than a stale build.
-    """
+    """Refuse a robot asset whose colliders carry no surface properties."""
     stage = omni.usd.get_context().get_stage()
     bad = []
     for prim in Usd.PrimRange(stage.GetPrimAtPath(ROBOT_PRIM)):
@@ -486,7 +362,6 @@ def main():
     chassis = articulation_root()
     build_graph(chassis)
 
-    # Bound for its lifetime, not discarded: see attach_lidar().
     lidar_sensor = None
     if not args.no_lidar:
         lidar_sensor = attach_lidar(chassis)
@@ -494,7 +369,6 @@ def main():
     SimulationManager.setup_simulation(dt=1.0 / args.physics_hz, device='cpu')
     simulation_app.update()
 
-    # Nothing publishes while the timeline is stopped.
     app_utils.play()
     simulation_app.update()
 
@@ -509,8 +383,6 @@ def main():
 
 
 if __name__ == '__main__':
-    # Reported here because os._exit() below ends the process before Python
-    # would print a traceback, making every failure look like a clean exit.
     status = 0
     try:
         main()
@@ -520,5 +392,4 @@ if __name__ == '__main__':
     finally:
         sys.stdout.flush()
         sys.stderr.flush()
-        # simulation_app.close() races a task-pool teardown and aborts.
         os._exit(status)
